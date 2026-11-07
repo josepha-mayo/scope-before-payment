@@ -1,6 +1,7 @@
 {
   "kind": "scope_clean_source_import_v1",
   "upstreamCommit": "7c447034ad7db3772cdaa5dcaed43fbc28caf725",
+  "initialPublicCommit": "4511aa0fc48cbbaf5e568be064140eb067e82eb8",
   "copiedFiles": [
     {
       "path": "LICENSE",

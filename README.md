@@ -1,5 +1,7 @@
 # Scope — before payment
 
+[![Build and tests](https://github.com/josepha-mayo/scope-before-payment/actions/workflows/current-offer.yml/badge.svg?branch=main)](https://github.com/josepha-mayo/scope-before-payment/actions/workflows/current-offer.yml)
+
 Turn a commission conversation into an exact offer, review changes together,
 and keep payment bound to the revision the buyer accepted.
 

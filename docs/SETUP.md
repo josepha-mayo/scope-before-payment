@@ -54,6 +54,14 @@ Windows CI separately checks supported native SQLite and authored DPAPI contract
 Offline Netlify path resolution is tested in `tools/netlify-config-check` with
 `npm ci --ignore-scripts` and `npm test`; it does not deploy or read credentials.
 
+The offline resolver's development dependency tree has a
+[low-severity deepmerge advisory](https://github.com/advisories/GHSA-gcqx-w48m-w2h4).
+It receives only committed TOML and literal offline settings. Do not feed it
+untrusted configuration. The current published resolver package has no fixed
+dependency release; npm's suggested forced downgrade is not a compatible fix.
+This tool is separate from the application's production dependencies, whose
+locked installation is audited independently.
+
 ## Deploying your own hosted copy
 
 Use your own Netlify project and accounts. From `apps/scope-web`, install the
