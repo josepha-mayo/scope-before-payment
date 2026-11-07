@@ -43,6 +43,11 @@ test('stalled storage and streams are bounded and a late SDK dispatch cannot sen
  await assert.rejects(ledger.read(id),{code:'erasure_ledger_unavailable'});release(stream(JSON.stringify(intent())));await assert.rejects(transport('https://owned.invalid'),{code:'erasure_ledger_unavailable'});assert.equal(calls,0);
  let cancelled=false;const blocked=createErasureLedger({timeoutMs:15,openStore:()=>({get:async()=>new ReadableStream({cancel(){cancelled=true;}})})});await assert.rejects(blocked.read(id),{code:'erasure_ledger_unavailable'});assert.equal(cancelled,true);
 });
+test('an enclosing read deadline aborts the SDK transport before its own window can dispatch again',async()=>{
+ const controller=new AbortController();let transport,calls=0,entered;const started=new Promise(resolve=>entered=resolve),ledger=createErasureLedger({request:async()=>{calls++;throw Error('must not dispatch');},openStore:request=>{transport=request;entered();return {get:async()=>new Promise(()=>{})};}});
+ const pending=ledger.read(id,{signal:controller.signal});await started;controller.abort();await assert.rejects(pending,{code:'erasure_ledger_unavailable'});await assert.rejects(transport('https://owned.invalid'),{code:'erasure_ledger_unavailable'});assert.equal(calls,0);
+});
+
 test('preview, local, wrong-site, wrong-origin and failing configuration cannot open the shared production store',async()=>{
  const good={deploy:{context:'production',published:true},site:{id:'ab4ea802-f4d3-4dee-9588-8581897b460b',url:'https://scope-before-payment.netlify.app'}};
  for(const context of [{...good,deploy:{context:'deploy-preview',published:true}},{...good,deploy:{context:'dev',published:true}},{...good,deploy:{context:'production',published:false}},{...good,site:{...good.site,id:buyer}},{...good,site:{...good.site,url:'https://other.invalid'}},{}]){

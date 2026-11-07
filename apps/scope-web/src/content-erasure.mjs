@@ -7,6 +7,7 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
  const body=h('div'),status=h('p');status.setAttribute('role','status');status.setAttribute('aria-label','Content removal status');
  panel.append(h('summary','Remove workspace content'),h('p','Remove this workspace’s saved conversations, every offer and amount, buyer notes, invitation email, AI text and duplicate saved responses. Both joined members must agree. An invitation that nobody joined has only its creator as a member.'),h('p','Minimal account references, decisions, hashes, times and consumed action limits remain to prevent repeats. This is workspace content removal, not account deletion. Provider records, hosting logs, database history and backups, and copies already downloaded have separate retention requirements.'),h('p','Save any copy you need first. Review pauses editing. Before locking removal, either member can cancel; an unlocked request expires after 24 hours. Locking cannot be withdrawn, even if removal needs recovery.'),body,status);
  const copy=button('Review account download options',()=>{const target=panel.ownerDocument.getElementById('scope-account-data');if(target){target.open=true;target.scrollIntoView({block:'start'});target.querySelector('summary')?.focus();}},true);panel.insertBefore(copy,body);parent.append(panel);
+ panel.insertBefore(h('p','Locking also withholds private content before the purge finishes. Retained removal metadata stays available; save any content copy before locking.'),body);
  let view=null,busy=false,disposed=false,run=0,controls=[],formStamp='',mismatchHelp=null,message='Read the saved removal status before deciding.';
  const refresh=button('Refresh removal status',()=>refreshStatus(),true);panel.insertBefore(refresh,body);
  const same=before=>!disposed&&stamp(context())===stamp(before);
@@ -20,7 +21,7 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
  }
  async function perform(action,input){
   const before=context(),own=++run;if(busy||before.blocked||!before.confirmed||before.dirty)return;busy=true;message='Saving your removal decision…';status.textContent=message;actions();
-  try{const result=await send(action,input,before);if(disposed||own!==run)return;if(!same(before))return;if(!result){message=context().readBlocked?'This decision is not confirmed. Use the saved-action check before continuing.':'This decision is not confirmed. Refresh removal status before deciding again.';return;}view=checked(result,before.id);onReview(view);if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
+  try{const result=await send(action,input,before);if(disposed||own!==run)return;if(!same(before))return;if(!result){message=context().readBlocked?'This decision is not confirmed. Use the saved-action check before continuing.':'This decision is not confirmed. Refresh removal status before deciding again.';return;}view=checked(result,before.id);onReview(view);if(disposed)return;if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
   catch(error){if(same(before))message=error.message||'Removal status is unavailable. No action was resent.';}
   finally{if(!disposed&&own===run){busy=false;status.textContent=message;actions();}}
  }
@@ -32,6 +33,7 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
   if(!view){status.textContent=message;actions();return;}
   if(!view.eligible)body.append(h('p','This workspace has payment history or an unresolved AI action. It needs reconciliation and a retention decision before content removal.'));
   if(!view.available)body.append(h('p','Content removal is unavailable. Existing references remain retained; no new attempt will be substituted.'));
+  if(view.requiresOperatorReview){body.append(h('p','The original removal intent cannot be reconciled with this database snapshot. Private content stays withheld. The original admission records need review; no replacement claim will be created.'));status.textContent=message;actions();return;}
   const requestable=()=>!r||['withdrawn','expired'].includes(s),active=()=>['awaiting_consent','ready_to_admit'].includes(s);
   if(r&&!requestable())body.append(h('p','This review covers saved conversation version '+r.sourceVersion+' and offers through revision '+r.revision+'. Earlier saved versions are included.'));
   if(r){mismatchHelp=h('p','Refresh the saved offer to read the version covered by this review before agreeing.');body.append(mismatchHelp);}
@@ -54,7 +56,7 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
  }
  async function refreshStatus(){
   const before=context(),own=++run;if(busy||before.readBlocked)return;busy=true;message='Reading saved removal status…';status.textContent=message;actions();
-  try{const result=await load(before);if(!same(before)||own!==run)return;view=checked(result,before.id);onReview(view);if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
+  try{const result=await load(before);if(!same(before)||own!==run)return;view=checked(result,before.id);onReview(view);if(disposed)return;if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
   catch(error){if(same(before)){view=null;controls=[];body.replaceChildren();message=error.message||'Removal status is unavailable. No action was sent.';}}
   finally{if(!disposed&&own===run){busy=false;status.textContent=message;actions();}}
  }

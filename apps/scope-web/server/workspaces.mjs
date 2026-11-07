@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import {AsyncLocalStorage} from 'node:async_hooks';
 import { domainToASCII } from 'node:url';
 import { acquireConnection } from './db-connection.mjs';
 import { createDraftMethods } from './ai-store.mjs';
@@ -6,7 +7,8 @@ import { createCheckoutMethods } from './checkout-store.mjs';
 import { createAccountRecordMethods } from './account-record.mjs';
 import { createCollectionPages } from './collection-pages.mjs';
 import {createContentErasureMethods} from './content-erasure.mjs';
-import {workspaceContentErasureEnabled} from './erasure-release.mjs';
+import {workspaceContentErasureEnabled,workspaceContentReadFenceEnabled} from './erasure-release.mjs';
+import {createContentAccessFence} from './content-access.mjs';
 import P from '../../../experiments/scope-to-quote/draft-protocol.js';
 import C from '../../../experiments/scope-to-quote/offer-core.js';
 
@@ -50,12 +52,14 @@ const checkedQuote = (row, workspaceId) => {
 // getPrincipal is a trusted server-side authentication adapter, never request
 // JSON, a role header or a client-supplied user ID. It is resolved for every call.
 // This module does not authenticate a browser or expose an HTTP endpoint.
-export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checkoutProvider, checkoutTimeoutMs,contentErasureEnabled=workspaceContentErasureEnabled,erasureLedger,erasureRequestTtlMs,canWrite=()=>true }) {
+export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checkoutProvider, checkoutTimeoutMs,contentErasureEnabled=workspaceContentErasureEnabled,contentReadFenceEnabled=contentErasureEnabled||workspaceContentReadFenceEnabled,erasureLedger,erasureRequestTtlMs,canWrite=()=>true }) {
   if (!pool || typeof pool.connect !== 'function' || typeof getPrincipal !== 'function') throw new TypeError('workspace_store_configuration');
+  const identity=new AsyncLocalStorage();
   async function principal() {
+    if(identity.getStore())return identity.getStore();
     let user; try { user = await getPrincipal(); } catch { fail('authentication_required', 401); }
     if (!user || !uuid(user.id)) fail('authentication_required', 401);
-    return { id: user.id, email: email(user.email), emailVerified: user.emailVerified === true && typeof user.confirmedAt === 'string' && Number.isFinite(Date.parse(user.confirmedAt)) };
+    return Object.freeze({ id: user.id, email: email(user.email), emailVerified: user.emailVerified === true && typeof user.confirmedAt === 'string' && Number.isFinite(Date.parse(user.confirmedAt)) });
   }
   const actor = async () => (await principal()).id;
   async function transaction(action, readOnly = false) {
@@ -84,9 +88,10 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
   }
   async function workspace(client, user, id, lock = false,allowErasureDecision=false) {
     if (!uuid(id)) fail('workspace_not_found', 404);
-    const { rows } = await client.query('SELECT w.*,e.claim_id IS NOT NULL AS content_erased,e.created_at AS content_erased_at FROM scope_app.workspaces w LEFT JOIN scope_app.content_erasure_completions e ON e.workspace_id=w.id WHERE w.id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE OF w' : ''), [id, user]);
+    const { rows } = await client.query('SELECT w.*,e.claim_id IS NOT NULL AS content_erased,e.created_at AS content_erased_at,c.id AS content_erasure_claim_id FROM scope_app.workspaces w LEFT JOIN scope_app.content_erasure_completions e ON e.workspace_id=w.id LEFT JOIN scope_app.content_erasure_claims c ON c.workspace_id=w.id WHERE w.id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE OF w' : ''), [id, user]);
     if (!rows[0]) fail('workspace_not_found', 404);
     if(rows[0].content_erased&&!allowErasureDecision)fail('workspace_content_erased',410);
+    if(rows[0].content_erasure_claim_id&&!allowErasureDecision)fail('workspace_erasure_locked');
     if(lock&&!allowErasureDecision&&(await client.query('SELECT scope_app.content_erasure_paused($1) AS paused',[id])).rows[0].paused)fail('workspace_erasure_pending');
     return rows[0];
   }
@@ -121,10 +126,11 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
       return record(client, user, input, id, kind, fingerprint, await action(client, w, user, input));
     });
   }
+  const access=createContentAccessFence({enabled:contentReadFenceEnabled,privacyEnabled:contentErasureEnabled,ledger:erasureLedger,transaction,principal,runAs:(user,action)=>identity.run(user,action),fail});
   const drafts=createDraftMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider:draftProvider});
   const checkout=createCheckoutMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,checkedQuote,openChange,fingerprintFor,fail,provider:checkoutProvider,timeoutMs:checkoutTimeoutMs});
-  const erasure=createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled:contentErasureEnabled,ledger:erasureLedger,requestTtlMs:erasureRequestTtlMs,canWrite});
-  return Object.freeze({
+  const erasure=createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled:contentErasureEnabled,readFenceEnabled:contentReadFenceEnabled,ledger:erasureLedger,requestTtlMs:erasureRequestTtlMs,canWrite});
+  const methods={
     ...createCollectionPages({transaction,principal,fail}),
     ...createAccountRecordMethods({transaction,principal,fail}),
     readCheckout:checkout.readCheckout,startCheckout:checkout.startCheckout,checkCheckout:checkout.checkCheckout,captureCheckout:checkout.captureCheckout,
@@ -140,13 +146,13 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
       const projectName = named && typeof input.projectName === 'string' ? input.projectName.trim() : 'Commission';
       if (named && (!P.text(input.projectName, 120) || /[\r\n]/.test(input.projectName)) || !projectName) fail('workspace_project_name_invalid', 422);
       const src = source(input.messages, 1), fingerprint = fingerprintFor({ kind: 'create', input: { requestId: input.requestId, ...(invited ? { buyerEmail: recipient } : { buyerId: input.buyerId }), messages: src.messages, ...(named ? { projectName } : {}) } });
+      const id=randomUUID();await access.fresh(id);
       return transaction(async client => {
         await lockActor(client, user);
         const saved = await previous(client, user, input.requestId, fingerprint);
         if (saved) return saved;
         const count = await client.query('SELECT count(*)::integer AS count FROM scope_app.workspaces WHERE merchant_id=$1', [user]);
         if (count.rows[0].count >= 100) fail('workspace_limit_reached', 429);
-        const id = randomUUID();
         await client.query('INSERT INTO scope_app.workspaces(id,merchant_id,buyer_id,project_name) VALUES($1,$2,$3,$4)', [id, user, invited ? null : input.buyerId, projectName]);
         await client.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages) VALUES($1,1,$2,$3)', [id, src.binding, JSON.stringify(src.messages)]);
         if (invited) await client.query('INSERT INTO scope_app.invitations(workspace_id,recipient_email) VALUES($1,$2)', [id, recipient]);
@@ -295,5 +301,6 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
         return row.kind==='draft' ? drafts.status(client,user,row.workspace_id,row.result.draftId) : row.kind.startsWith('checkout-') ? checkout.status(client,user,row.workspace_id) : row.kind.startsWith('erasure-')?erasure.status(client,user,row.workspace_id,row.result.erasureRequestId):row.result;
       }, true);
     },
-  });
+  };
+  return Object.freeze(access.wrap(methods));
 }

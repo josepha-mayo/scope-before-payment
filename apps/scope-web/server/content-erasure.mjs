@@ -3,8 +3,8 @@ import {randomUUID} from 'node:crypto';
 // Disabled release. Admission alone never erases content. The explicit purge
 // checks the original external intent, then removes payloads in one transaction.
 // Protection of pre-erasure restored content remains separate required work.
-export function createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled,ledger,requestTtlMs=86400000,canWrite=()=>true}){
- if(typeof enabled!=='boolean'||typeof canWrite!=='function'||!Number.isInteger(requestTtlMs)||requestTtlMs<100||requestTtlMs>86400000)throw TypeError('content_erasure_configuration');
+export function createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled,readFenceEnabled=false,ledger,requestTtlMs=86400000,canWrite=()=>true}){
+ if(typeof enabled!=='boolean'||typeof readFenceEnabled!=='boolean'||typeof canWrite!=='function'||!Number.isInteger(requestTtlMs)||requestTtlMs<100||requestTtlMs>86400000)throw TypeError('content_erasure_configuration');
  const needWritable=()=>{let yes=false;try{yes=canWrite()===true;}catch{}if(!yes)fail('recovery_read_only',503);};
  const available=()=>{try{return enabled&&typeof ledger?.admit==='function'&&typeof ledger?.read==='function'&&(typeof ledger.available!=='function'||ledger.available()===true);}catch{return false;}};
  const needEnabled=()=>{if(!enabled)fail('workspace_erasure_unavailable',503);};
@@ -45,14 +45,9 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
   if(!r.active||(await client.query('SELECT 1 FROM scope_app.content_erasure_withdrawals WHERE request_id=$1',[id])).rowCount)fail('workspace_erasure_request_inactive');
   return r;
  }
- async function observation(view){
-  const claim=view.request?.claim;if(!claim)return view;
-  let observed='unavailable';try{const value=await ledger.read(view.workspaceId);observed=value===null?'absent':fingerprintFor(value)===fingerprintFor(claim.intent)?'matching':'conflict';}catch{}
-  return {...view,ledgerObservation:observed};
- }
  return {
   status,
-  async readContentErasure(id){needEnabled();const user=(await principal()).id;return observation(await transaction(client=>status(client,user,id),true));},
+  async readContentErasure(id){if(!enabled&&!readFenceEnabled)fail('workspace_erasure_unavailable',503);const user=(await principal()).id;return transaction(client=>status(client,user,id),true);},
   async purgeContentErasure(id,input){
    needEnabled();const keys=['erasureRequestId','erasureClaimId','confirmation'];request(input,keys);input=snapshot(input);request(input,keys);
    if(input.confirmation!=='erase-the-admitted-workspace-content')fail('workspace_erasure_confirmation_required',422);
@@ -130,18 +125,18 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
     const intent=(await client.query('SELECT scope_app.content_erasure_intent($1) AS intent',[erasureClaimId])).rows[0].intent;
     return {saved:{workspaceId:id,erasureRequestId:r.id,erasureClaimId},dispatch:{id:erasureClaimId,intent}};
    });
-   if(!result.dispatch)return observation(result.view);
+   if(!result.dispatch)return result.view;
    needWritable();
    // No network operation is admitted until claim + original operation commit.
    // A duplicate request only reads; it never calls ledger.admit again.
-   let saved;try{saved=await ledger.admit(result.dispatch.intent);}catch{return observation(result.view);}
+   let saved;try{saved=await ledger.admit(result.dispatch.intent);}catch{return result.view;}
    let matches=false;try{matches=fingerprintFor(saved)===fingerprintFor(result.dispatch.intent);}catch{}
    if(!matches)return {...result.view,ledgerObservation:'conflict'};
    const user=result.actorId;
    const view=await transaction(async client=>{
-    await workspace(client,user,id);needWritable();await client.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2) ON CONFLICT(claim_id) DO NOTHING',[result.dispatch.id,result.dispatch.intent]);
+    await workspace(client,user,id,false,true);needWritable();await client.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2) ON CONFLICT(claim_id) DO NOTHING',[result.dispatch.id,result.dispatch.intent]);
     const saved=await status(client,user,id,result.view.request.id);needWritable();return saved;
-   });return observation(view);
+   });return view;
   },
  };
 }

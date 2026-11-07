@@ -7,7 +7,7 @@ import { createPaypalProvider } from '../../server/paypal-provider.mjs';
 import {createRecoveryPolicy,guardDraftProvider,guardCheckoutProvider} from '../../server/recovery.mjs';
 import {createRequestReporter} from '../../server/observability.mjs';
 import {createProductionErasureLedger} from '../../server/erasure-ledger.mjs';
-import {workspaceContentErasureEnabled} from '../../server/erasure-release.mjs';
+import {workspaceContentErasureEnabled,workspaceContentReadFenceEnabled} from '../../server/erasure-release.mjs';
 
 // Only shared database infrastructure is cached; identity stays request-scoped.
 let database;
@@ -17,7 +17,8 @@ export default createApiHandler({
   getPool,
   canWrite:recovery.writable,
   contentErasureEnabled:workspaceContentErasureEnabled,
-  erasureLedger:workspaceContentErasureEnabled?createProductionErasureLedger({canRecord:recovery.writable}):undefined,
+  contentReadFenceEnabled:workspaceContentReadFenceEnabled,
+  erasureLedger:workspaceContentErasureEnabled||workspaceContentReadFenceEnabled?createProductionErasureLedger({canRecord:recovery.writable}):undefined,
   report:createRequestReporter(),
   getUser: createPrincipalReader({ getUser, getSettings, getProfile: id => admin.getUser(id) }),
   draftProvider:guardDraftProvider(createDraftProvider(),recovery),

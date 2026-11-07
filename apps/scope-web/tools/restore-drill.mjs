@@ -10,6 +10,7 @@ import pg from 'pg';
 import {createWorkspaceStore} from '../server/workspaces.mjs';
 import {createApiHandler} from '../server/api.mjs';
 import {createRecoveryPolicy,guardDraftProvider,guardCheckoutProvider} from '../server/recovery.mjs';
+import {createErasureLedger} from '../server/erasure-ledger.mjs';
 
 const run=promisify(execFile),hash=v=>createHash('sha256').update(v===undefined?'undefined':JSON.stringify(v)).digest('hex');
 const qi=name=>{assert.match(name,/^[a-z][a-z0-9_]*$/);return '"'+name+'"';};
@@ -78,6 +79,17 @@ async function main(){
   const made=await merchant.create({requestId:randomUUID(),buyerId,projectName:'Owned restore drill',messages:[{id:'B1',role:'buyer',text:'An invented recovery drill for one heron.'},{id:'M1',role:'merchant',text:'One PNG for your own website, January 12, two rounds, USD87 in full before work. No resale.'}]});
   const q=(await merchant.publish(made.workspaceId,{requestId:randomUUID(),expectedRevision:0,sourceVersion:1,sourceBinding:made.source.binding,confirmation:'publish-exact-reviewed-offer',fields:{deliverable:'One heron as a PNG.',usage:'Own website. No resale.',delivery:'January 12, 2027',revisions:'Two rounds.',price:'87.00',terms:'Single full payment of USD87.00 before work starts.'}})).quote;
   await buyer.accept(made.workspaceId,{requestId:randomUUID(),revision:1,quoteBinding:q.binding,confirmation:'accept-exact-published-offer'});
+  const objects=new Map();let erasureWrites=0;
+  const outsideLedger=createErasureLedger({openStore:()=>({set:async(key,text,options)=>{assert.equal(options.onlyIfNew,true);erasureWrites++;if(objects.has(key))return {modified:false};objects.set(key,text);return {modified:true};},get:async key=>objects.has(key)?new Response(objects.get(key)).body:null})});
+  const privacyPrincipal=id=>({...principal(id),email:id===buyerId?'recipient@invented.example':'creator@invented.example'});
+  const privacyStore=(pool,id,enabled=true)=>createWorkspaceStore({pool,getPrincipal:async()=>privacyPrincipal(id),contentErasureEnabled:enabled,contentReadFenceEnabled:true,erasureLedger:outsideLedger});
+  const privateMerchant=privacyStore(source,merchantId),privateBuyer=privacyStore(source,buyerId);
+  const beforeClaim=await privateMerchant.create({requestId:randomUUID(),buyerEmail:'recipient@invented.example',projectName:'Owned pre-claim recovery sentinel',messages:[{id:'B1',role:'buyer',text:'Invented pre-claim private payload.'}]});
+  const beforePurge=await privateMerchant.create({requestId:randomUUID(),buyerId,projectName:'Owned pre-purge recovery sentinel',messages:[{id:'B1',role:'buyer',text:'Invented pre-purge private payload.'}]});
+  async function admitOriginal(id){const w=await privateMerchant.read(id),r=await privateMerchant.requestContentErasure(id,{requestId:randomUUID(),sourceVersion:w.source.version,sourceBinding:w.source.binding,revision:0,buyerJoined:w.buyerJoined,confirmation:'request-workspace-content-erasure'}),rid=r.request.id;
+    await privateMerchant.consentContentErasure(id,{requestId:randomUUID(),erasureRequestId:rid,confirmation:'consent-to-this-workspace-content-erasure'});if(w.buyerJoined)await privateBuyer.consentContentErasure(id,{requestId:randomUUID(),erasureRequestId:rid,confirmation:'consent-to-this-workspace-content-erasure'});
+    return privateMerchant.admitContentErasure(id,{requestId:randomUUID(),erasureRequestId:rid,confirmation:'admit-this-irreversible-content-erasure-intent'});}
+  const originalPurgeClaim=await admitOriginal(beforePurge.workspaceId);
   const beforeView=await buyer.read(made.workspaceId),before=await manifest(source);
 
   phase='dump';
@@ -88,6 +100,13 @@ async function main(){
   receipt.dumpMs=Math.round(performance.now()-backupStart);
   const dumpHash=(await docker('exec',container,'sha256sum',dump)).split(/\s+/)[0];assert.match(dumpHash,/^[a-f0-9]{64}$/);receipt.dumpSha256=dumpHash;
   assert.equal(hash(await manifest(source)),hash(before),'Dump must not alter source');
+
+  phase='erasure_after_backup';
+  await privateBuyer.joinInvitation(beforeClaim.workspaceId,{requestId:randomUUID(),confirmation:'join-this-invited-workspace'});
+  const originalPreClaim=await admitOriginal(beforeClaim.workspaceId);
+  const purgeInput=view=>({requestId:randomUUID(),erasureRequestId:view.request.id,erasureClaimId:view.request.claim.id,confirmation:'erase-the-admitted-workspace-content'});
+  const preClaimPurge=purgeInput(originalPreClaim),prePurgePurge=purgeInput(originalPurgeClaim);
+  await privateMerchant.purgeContentErasure(beforeClaim.workspaceId,preClaimPurge);await privateMerchant.purgeContentErasure(beforePurge.workspaceId,prePurgePurge);assert.equal(erasureWrites,2);
 
   // Deliberately authored possible dispatch AFTER the backup. Restoring loses
   // its database claim; a restored database alone cannot authorize replay.
@@ -140,13 +159,13 @@ async function main(){
   receipt.checks.privateApplicationReadRestored=true;receipt.checks.postBackupClaimLossDemonstrated=true;receipt.checks.recoveryFencePreventsProviderReplay=true;
 
   phase='restored_erasure_admission';
-  const admitted=(await target.query('SELECT c.id,c.workspace_id,c.request_id,c.actor_id,c.operation_request_id FROM scope_app.content_erasure_claims c WHERE NOT EXISTS(SELECT 1 FROM scope_app.content_erasure_completions d WHERE d.claim_id=c.id) ORDER BY c.created_at,c.id LIMIT 1')).rows[0];
+  const admitted=(await target.query('SELECT c.id,c.workspace_id,c.request_id,c.actor_id,c.operation_request_id,w.current_source_version FROM scope_app.content_erasure_claims c JOIN scope_app.workspaces w ON w.id=c.workspace_id WHERE NOT EXISTS(SELECT 1 FROM scope_app.content_erasure_completions d WHERE d.claim_id=c.id) ORDER BY c.created_at,c.id LIMIT 1')).rows[0];
   assert.ok(admitted,'An admitted erasure fixture must survive the restore');
   let ledgerWrites=0;
   const privacy=createWorkspaceStore({pool:target,getPrincipal:async()=>principal(admitted.actor_id),contentErasureEnabled:true,
     erasureLedger:{read:async()=>null,admit:async()=>{ledgerWrites++;throw Error('restore_must_not_dispatch');}}});
-  const heldView=await privacy.read(admitted.workspace_id);assert.equal(heldView.erasurePending,true);
-  await assert.rejects(privacy.replaceSource(admitted.workspace_id,{requestId:randomUUID(),expectedVersion:heldView.source.version,messages:heldView.source.messages}),e=>e.code==='workspace_erasure_pending');
+  await assert.rejects(privacy.read(admitted.workspace_id),e=>e.code==='workspace_erasure_locked');
+  await assert.rejects(privacy.replaceSource(admitted.workspace_id,{requestId:randomUUID(),expectedVersion:admitted.current_source_version,messages:[{id:'B1',role:'buyer',text:'Authored attempted restored mutation.'}]}),e=>e.code==='workspace_erasure_locked');
   const replay=await privacy.admitContentErasure(admitted.workspace_id,{requestId:admitted.operation_request_id,erasureRequestId:admitted.request_id,confirmation:'admit-this-irreversible-content-erasure-intent'});
   assert.equal(replay.request.claim.id,admitted.id);assert.equal(replay.request.paused,true);assert.equal(replay.contentErased,false);assert.equal(replay.ledgerObservation,'absent');
   assert.equal((await privacy.operationStatus(admitted.operation_request_id)).request.claim.id,admitted.id);assert.equal(ledgerWrites,0);
@@ -163,6 +182,29 @@ async function main(){
   const erasedReplay=await erasedStore.purgeContentErasure(completed.workspace_id,{requestId:completed.operation_request_id,erasureRequestId:completed.request_id,erasureClaimId:completed.claim_id,confirmation:'erase-the-admitted-workspace-content'});
   assert.equal(erasedReplay.contentErased,true);assert.equal((await erasedStore.operationStatus(completed.operation_request_id)).contentErased,true);assert.equal(erasureIO,0);
   receipt.checks.completedErasurePayloadsAbsentAfterRestore=true;receipt.checks.restoredPurgeReplayHasNoExternalIO=true;
+
+  phase='external_intent_restored_read_boundary';
+  const fenced=privacyStore(target,merchantId,false),recipient=privacyStore(target,buyerId,false),active=privacyStore(target,merchantId);
+  const handlerWithFence=createApiHandler({getUser:async()=>privacyPrincipal(merchantId),getPool:()=>target,contentErasureEnabled:false,contentReadFenceEnabled:true,erasureLedger:outsideLedger});
+  for(const item of [beforeClaim,beforePurge]){
+    const id=item.workspaceId;assert.equal((await target.query('SELECT scope_app.content_erasure_payloads_absent($1) AS absent',[id])).rows[0].absent,false);
+    for(const path of ['workspaces/'+id,'workspaces/'+id+'/draft','workspaces/'+id+'/checkout']){const result=await handlerWithFence(new Request(origin+'/api/v1/'+path));assert.equal(result.status,409);assert.equal((await result.json()).error.code,'workspace_erasure_locked');}
+    await assert.rejects(fenced.replaceSource(id,{requestId:randomUUID(),expectedVersion:1,messages:[{id:'B1',role:'buyer',text:'Do not admit fresh restored authority.'}]}),e=>e.code==='workspace_erasure_locked');
+    await assert.rejects(fenced.requestDraft(id,{requestId:randomUUID(),sourceVersion:1,sourceBinding:item.source.binding,confirmation:'send-saved-conversation-for-ai-review'}),e=>e.code==='workspace_erasure_locked');
+    const status=await active.readContentErasure(id);assert.equal(status.contentErasureLocked,true);assert.equal(status.contentErased,false);
+  }
+  const lostClaim=await active.readContentErasure(beforeClaim.workspaceId);assert.equal(lostClaim.request,null);assert.equal(lostClaim.requiresOperatorReview,true);assert.equal(lostClaim.available,false);
+  const keptClaim=await active.readContentErasure(beforePurge.workspaceId);assert.equal(keptClaim.request.claim.id,originalPurgeClaim.request.claim.id);assert.equal(keptClaim.ledgerObservation,'matching');
+  await assert.rejects(recipient.readInvitation(beforeClaim.workspaceId),e=>e.code==='workspace_erasure_locked');await assert.rejects(recipient.joinInvitation(beforeClaim.workspaceId,{requestId:randomUUID(),confirmation:'join-this-invited-workspace'}),e=>e.code==='workspace_erasure_locked');
+  for(const row of await fenced.list())if([beforeClaim.workspaceId,beforePurge.workspaceId].includes(row.workspaceId)){assert.equal(row.projectName,null);assert.equal(row.contentErasureLocked,true);}
+  const paged=await fenced.workspacePage('start');for(const row of paged.items)if([beforeClaim.workspaceId,beforePurge.workspaceId].includes(row.workspaceId)){assert.equal(row.projectName,null);assert.equal(row.contentErasureLocked,true);}
+  for(const row of (await recipient.invitationPage('start')).items)if(row.workspaceId===beforeClaim.workspaceId){assert.equal(row.projectName,null);assert.equal(row.contentErasureLocked,true);}
+  const createOperation=(await target.query("SELECT request_id FROM scope_app.operations WHERE workspace_id=$1 AND kind='create'",[beforeClaim.workspaceId])).rows[0];
+  const retained=await fenced.operationStatus(createOperation.request_id);assert.equal(retained.operationRetained,true);assert.equal(retained.contentErasureLocked,true);assert.equal(Object.hasOwn(retained,'source'),false);
+  const copy=await fenced.accountRecord();for(const section of copy.pages){let cursor=section.cursor;while(cursor){const page=await fenced.accountRecordPage(cursor);if(!['privacyHistory','activity'].includes(page.section))for(const row of page.entries)if([beforeClaim.workspaceId,beforePurge.workspaceId].includes(row.workspaceId))assert.equal(row.contentWithheld,true);cursor=page.next;}}
+  await assert.rejects(active.purgeContentErasure(beforeClaim.workspaceId,preClaimPurge),e=>e.code==='workspace_erasure_claim_required');
+  assert.equal(hash(await manifest(target)),hash(before));assert.equal(erasureWrites,2);
+  receipt.checks.preClaimRestoreCannotReleasePrivatePayloads=true;receipt.checks.matchingRestoredClaimDoesNotReleasePayloads=true;receipt.checks.readRecoveryDoesNotRedactOrReconstructClaims=true;receipt.checks.fenceRemainsWithNewErasureActionsDisabled=true;
 
   phase='restored_immutability';
   const actualCheck=(await target.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='scope_app.checkout_calls'::regclass AND conname='checkout_calls_check'")).rows[0].definition;
@@ -183,6 +225,12 @@ async function main(){
     finally{await c.query('ROLLBACK');}assert.equal(rejected,true,'Restored immutability guard: '+table);
   }}finally{c.release();}
   assert.equal(hash(await manifest(target)),hash(before));assert.equal(hash(await manifest(source)),hash(sourceAfterTail));
+  // Explicit owned reconciliation reuses the original purge input and original
+  // restored claim. It writes no ledger key and creates no replacement grant.
+  const reconciled=await active.purgeContentErasure(beforePurge.workspaceId,prePurgePurge);assert.equal(reconciled.contentErased,true);assert.equal(erasureWrites,2);
+  assert.equal((await target.query('SELECT scope_app.content_erasure_payloads_absent($1) AS absent',[beforePurge.workspaceId])).rows[0].absent,true);
+  assert.equal((await target.query('SELECT scope_app.content_erasure_payloads_absent($1) AS absent',[beforeClaim.workspaceId])).rows[0].absent,false);
+  receipt.checks.originalRestoredClaimCanRedactWithOriginalPurgeInput=true;receipt.checks.preClaimPurgeRequiresOriginalAdmissionRecovery=true;
   receipt.checks.criticalImmutableGuardsPreserved=critical.length;receipt.checks.sourceUntouchedByRestore=true;receipt.checks.restoreTargetStillFenced=true;
   receipt.status='passed';receipt.elapsedMs=Math.round(performance.now()-started);
 }

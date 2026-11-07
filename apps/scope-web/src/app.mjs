@@ -22,7 +22,7 @@ const friendly = code => ({recovery_read_only:'Changes are temporarily paused. S
 
 export function mount({ document: doc, auth, fetch: request = globalThis.fetch.bind(globalThis), storage, history = globalThis.history, location = globalThis.location, offlinePreview = false }) {
   if(!storage)try{storage=globalThis.sessionStorage;}catch{storage={getItem(){throw Error();},setItem(){throw Error();},removeItem(){throw Error();}};}
-  const root = doc.getElementById('app'), state = { user:null, epoch:0, generation:0, pending:false, intent:null, workspace:null, confirmed:false, dirty:false, sourceDirty:false, draft:{}, merchantAck:null, buyerAck:null, createdWorkspaceId:null };
+  const root = doc.getElementById('app'), state = { user:null, epoch:0, generation:0, pending:false, intent:null, workspace:null, removalMetadata:null,confirmed:false, dirty:false, sourceDirty:false, draft:{}, merchantAck:null, buyerAck:null, createdWorkspaceId:null };
   let suppressAuth=1;
   let ai=null,checkout=null,record=null,accountRecord=null,revisionHistory=null,privacy=null;
   let renderedPath=location.pathname;
@@ -39,8 +39,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const say = text => { notice.textContent=state.user?.readOnly&&!text.startsWith('Changes are temporarily paused.')?'Changes are temporarily paused. Saved records remain available. '+text:text; };
   const clearDirty = () => { state.dirty=false;state.sourceDirty=false;state.generation++;state.merchantAck=null;state.buyerAck=null;changeAck=null;responseAck=null;withdrawAck=null; };
   const baseBlocked = () => state.pending || !!state.intent || state.user?.readOnly===true;
-  const blocked = () => baseBlocked() || state.workspace?.erasurePending===true;
-  const purgeIntent=()=>!!state.intent&&!state.intent.invalid&&state.intent.path.endsWith('/erasure/purge');
+  const blocked = () => baseBlocked() || state.workspace?.erasurePending===true||state.removalMetadata?.contentErasureLocked===true;
+  const purgeIntent=()=>!!state.intent&&!state.intent.invalid&&/\/erasure\/(admit|purge)$/.test(state.intent.path);
   const key = () => JSON.stringify([state.workspace?.workspaceId,state.workspace?.currentQuote?.revision||0,state.workspace?.source.binding,state.workspace?.openChangeRequest?.id,state.draft]);
   const quoteKey = () => JSON.stringify([state.workspace?.workspaceId,state.workspace?.currentQuote?.binding,state.workspace?.source.binding,state.workspace?.openChangeRequest?.id]);
   const changeKey = () => JSON.stringify([quoteKey(),changeNote?.value]);
@@ -88,17 +88,29 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   function readIntent(user) { try { const raw=storage.getItem(intentKey(user));if(raw===null)return null;const x=JSON.parse(raw);if(raw.length>1024||Object.keys(x).sort().join(',')!=='actorId,path,requestId'||x.actorId!==user||!new RegExp('^'+uuid+'$').test(x.requestId)||!/^\/api\/v1\/(workspaces|workspaces\/[a-f0-9-]+\/(source|publish|accept|request-changes|withdraw-changes|draft|checkout(?:\/check|\/capture)?|erasure\/(?:request|consent|withdraw|admit|purge))|invitations\/[a-f0-9-]+\/(?:join|revoke))$/.test(x.path))throw Error();return x; }catch{return{invalid:true};} }
   function persist(intent) { const raw=JSON.stringify(intent);storage.setItem(intentKey(intent.actorId),raw);if(storage.getItem(intentKey(intent.actorId))!==raw)throw Error('storage'); }
   function forget(intent) { storage.removeItem(intentKey(intent.actorId));if(storage.getItem(intentKey(intent.actorId))!==null)throw Error('storage');if(state.intent?.requestId===intent.requestId)state.intent=null; }
-  function retireSession(){state.epoch++;state.user=null;state.workspace=null;state.intent=null;state.confirmed=false;state.draft={};clearDirty();clearView();session.replaceChildren();actions();void loadSession();}
+  function retireSession(){state.epoch++;state.user=null;state.workspace=null;state.removalMetadata=null;state.intent=null;state.confirmed=false;state.draft={};clearDirty();clearView();session.replaceChildren();actions();void loadSession();}
   function removalView(result){
-    state.epoch++;state.workspace=null;state.confirmed=false;state.draft={};state.createdWorkspaceId=null;clearDirty();clearView();say('');
+    state.epoch++;state.workspace=null;state.removalMetadata=null;state.confirmed=false;state.draft={};state.createdWorkspaceId=null;clearDirty();clearView();say('');
     const completed=result?.contentErased===true;
     view.append(h('h1',completed?'Workspace content removed':'Content removal is unconfirmed'),h('p',completed?'Current workspace text and amounts have been removed. Minimal decision and action records remain; separate provider, database-history and backup retention still applies.':'This private view is cleared. That does not prove server removal. Check the original saved action; it will not be sent again.'),link('Back to workspaces','/'));actions();
+  }
+  function privacyContext(){const w=state.workspace,r=state.removalMetadata?.request;return {user:state.user?.id,epoch:state.epoch,id:currentWorkspaceId,generation:state.generation,sourceVersion:w?.source.version??r?.sourceVersion,sourceBinding:w?.source.binding??r?.sourceBinding,revision:w?.currentQuote?.revision??r?.revision??0,buyerJoined:w?.buyerJoined??r?.buyerJoined,confirmed:state.confirmed,dirty:state.dirty||state.sourceDirty,blocked:baseBlocked(),readBlocked:state.pending||!!state.intent};}
+  function mountPrivacy(parent,id){return mountContentErasure({parent,h,button,check,context:privacyContext,
+    load:async before=>{if(!await confirmReader(before.user,before.epoch))throw Error('Your account changed.');const result=await api('workspaces/'+id+'/erasure',undefined,before.user);if(!await confirmReader(before.user,before.epoch))throw Error('Your account changed.');return result;},
+    send:async(action,input,before)=>{if(!await confirmReader(before.user,before.epoch))return null;const now=privacyContext();if(['user','epoch','id','generation','sourceVersion','sourceBinding','revision','buyerJoined'].some(k=>before[k]!==now[k])||state.dirty||state.sourceDirty)return null;const result=await write('workspaces/'+id+'/erasure/'+action,input);if(result){if(result.contentErased)removalView(result);else if(result.contentErasureLocked)await lockedView(id,result);else await refreshWorkspace();}return result;},
+    onReview:result=>{if(state.workspace?.workspaceId===id){if(result.contentErasureLocked){void lockedView(id,result);return;}const paused=result.request?.paused===true;if(state.workspace.erasurePending!==paused){state.merchantAck=null;state.buyerAck=null;changeAck=null;responseAck=null;withdrawAck=null;if(!paused)state.confirmed=false;}state.workspace.erasurePending=paused;actions();}else if(currentWorkspaceId===id){state.removalMetadata=result;actions();}},onErased:removalView});}
+  async function lockedView(id,known){
+    removalView(null);currentWorkspaceId=id;const e=state.epoch,actor=state.user?.id;view.replaceChildren(h('p','Checking original removal metadata…'));
+    try{if(!await confirmReader(actor,e))return;const result=known&&Object.hasOwn(known,'request')?known:await api('workspaces/'+id+'/erasure',undefined,actor);if(!await confirmReader(actor,e)||e!==state.epoch)return;if(result.contentErased){removalView(result);return;}
+      state.removalMetadata=result;state.confirmed=true;view.replaceChildren(h('h1',result.requiresOperatorReview?'Original removal needs review':'Content removal locked'),h('p','Private content is withheld after locking. This does not prove the purge completed. Continue only from the retained original removal records.'),link('Back to workspaces','/'));
+      const navigation=h('nav',undefined,'workspace-nav with-privacy');navigation.setAttribute('aria-label','Workspace sections');navigation.append(sectionJump('Content removal','scope-content-erasure'));const area=h('div',undefined,'workspace-grid metadata-only');view.append(navigation,area);privacy=mountPrivacy(area,id);privacy.element.open=true;actions();
+    }catch(error){if(e===state.epoch){state.confirmed=false;view.replaceChildren(h('h1','Removal metadata unavailable'),h('p',error.message||'Check your account and the original saved action. No content was reopened.'),link('Back to workspaces','/'));actions();}}
   }
   async function api(path, data, actor=state.user?.id) {
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),15000);
     try {
       const response=await request('/api/v1/'+path,{method:data?'POST':'GET',credentials:'same-origin',headers:data?{'Content-Type':'application/json','X-Scope-Action':'explicit-user-action','X-Scope-Session':actor}:undefined,...(data?{body:JSON.stringify(data)}:{}),signal:controller.signal});
-      let result;try{result=await response.json();}catch{throw Error('The private service is unavailable. Check the saved action before continuing.');}if(!result||typeof result!=='object'||Array.isArray(result))throw Error('The private service is unavailable. Check the saved action before continuing.');if(!response.ok){if(result.error?.code==='recovery_read_only'&&state.user?.id===actor)state.user.readOnly=true;const error=Error(privacyFriendly(result.error?.code)||friendly(result.error?.code));error.status=response.status;error.code=result.error?.code;if(data&&error.code==='workspace_content_erased'&&state.user?.id===actor)removalView({contentErased:true});if(path!=='me'&&state.user?.id===actor&&(response.status===401||error.code==='session_changed'))retireSession();throw error;}
+      let result;try{result=await response.json();}catch{throw Error('The private service is unavailable. Check the saved action before continuing.');}if(!result||typeof result!=='object'||Array.isArray(result))throw Error('The private service is unavailable. Check the saved action before continuing.');if(!response.ok){if(result.error?.code==='recovery_read_only'&&state.user?.id===actor)state.user.readOnly=true;const error=Error(privacyFriendly(result.error?.code)||friendly(result.error?.code));error.status=response.status;error.code=result.error?.code;if(data&&error.code==='workspace_content_erased'&&state.user?.id===actor)removalView({contentErased:true});if(error.code==='workspace_erasure_locked'&&state.user?.id===actor){const target=new RegExp('^workspaces/('+uuid+')(?:/|$)').exec(path);if(target)void lockedView(target[1]);}if(path!=='me'&&state.user?.id===actor&&(response.status===401||error.code==='session_changed'))retireSession();throw error;}
       if(!Object.hasOwn(result,'data')||!new RegExp('^'+uuid+'$').test(result.actorId)||path==='me'&&(!result.data||result.data.id!==result.actorId))throw Error('The private service is unavailable. Check the saved action before continuing.');
       if(result.actorId!==actor&&path!=='me'){const error=Error(friendly('session_changed'));error.code='session_changed';error.status=409;if(state.user?.id===actor)retireSession();throw error;}
       if(result.readOnly===true&&state.user?.id===actor){state.user.readOnly=true;state.merchantAck=null;state.buyerAck=null;actions();}
@@ -111,7 +123,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     const actor=state.user.id,payload={requestId:crypto.randomUUID(),...input},intent={actorId:actor,path:'/api/v1/'+path,requestId:payload.requestId};let epoch=state.epoch;
     try{persist(intent);}catch{say('This browser could not save the action reference. Nothing was sent.');return null;}
     state.intent=intent;state.pending=true;if(path.startsWith('workspaces/'))state.confirmed=false;
-    if(privacyAction&&path.endsWith('/purge')){removalView(null);epoch=state.epoch;}
+    if(privacyAction&&/\/(admit|purge)$/.test(path)){removalView(null);epoch=state.epoch;}
     actions();say('Saving your action…');
     try{
       const result=await api(path,payload,actor);
@@ -126,11 +138,11 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   async function recover(){
     if(state.pending||!state.intent||state.intent.invalid){say('The saved action reference could not be verified. No action will be resent.');return;}
     const intent=state.intent,actor=state.user?.id,e=state.epoch;state.pending=true;actions();
-    try{const result=await api('operations/'+intent.requestId,undefined,actor);forget(intent);if(e!==state.epoch||state.user?.id!==actor)return;if(result.contentErased){removalView(result);return;}say('Saved action found. Read the current workspace before continuing.');if(result.workspaceId){if(state.dirty||state.sourceDirty){if(intent.path==='/api/v1/workspaces')state.createdWorkspaceId=result.workspaceId;if(result.workspaceId===currentWorkspaceId&&editor)await refreshWorkspace();else{say('Saved workspace found. Your unsaved text is still here.');view.append(button('Discard later edits and open saved workspace',()=>{clearDirty();history.replaceState(null,'','/workspace/'+result.workspaceId);openWorkspace(result.workspaceId);},true));}}else await openWorkspace(result.workspaceId);}}
+    try{const result=await api('operations/'+intent.requestId,undefined,actor);forget(intent);if(e!==state.epoch||state.user?.id!==actor)return;if(result.contentErased){removalView(result);return;}if(result.contentErasureLocked){await lockedView(result.workspaceId,result);return;}say('Saved action found. Read the current workspace before continuing.');if(result.workspaceId){if(state.dirty||state.sourceDirty){if(intent.path==='/api/v1/workspaces')state.createdWorkspaceId=result.workspaceId;if(result.workspaceId===currentWorkspaceId&&editor)await refreshWorkspace();else{say('Saved workspace found. Your unsaved text is still here.');view.append(button('Discard later edits and open saved workspace',()=>{clearDirty();history.replaceState(null,'','/workspace/'+result.workspaceId);openWorkspace(result.workspaceId);},true));}}else await openWorkspace(result.workspaceId);}}
     catch(error){if(e===state.epoch)say(error.code==='workspace_operation_not_found'?'No completed action is recorded yet. This does not prove it was never received. Check again; nothing will be resent.':error.message||'Saved status is unavailable. No action was resent.');}
     finally{state.pending=false;actions();}
   }
-  function navigate(path){if(state.pending||state.dirty||state.sourceDirty){say('Finish the pending action or discard unsaved changes before leaving.');return;}history.pushState(null,'',path);state.epoch++;state.workspace=null;clearDirty();loadRoute();}
+  function navigate(path){if(state.pending||state.dirty||state.sourceDirty){say('Finish the pending action or discard unsaved changes before leaving.');return;}history.pushState(null,'',path);state.epoch++;state.workspace=null;state.removalMetadata=null;clearDirty();loadRoute();}
   function link(text,path){const a=h('a',text);a.href=path;a.onclick=e=>{e.preventDefault();navigate(path);};return a;}
   function sourceRows(parent, initial){
     const rows=h('div',undefined,'source-rows');parent.append(rows);const read=()=>{const counts={buyer:0,merchant:0};return [...rows.children].map(card=>{const role=card.querySelector('select').value;return{id:(role==='buyer'?'B':'M')+(++counts[role]),role,text:card.querySelector('textarea').value};});};
@@ -234,13 +246,13 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     if(!currentWorkspaceId)return;const id=currentWorkspaceId,e=state.epoch,actor=state.user?.id;
     state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say('Reading the saved offer and checking your account…');
     try{const workspace=await readCurrentWorkspace(id,actor,e);if(!workspace||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;changeAck=null;responseAck=null;drawSource(workspace);drawQuote(workspace);drawChanges(workspace);if(ai)void ai.refresh();if(checkout)void checkout.refresh();drawInvitation(workspace);actions();say(state.dirty||state.sourceDirty?'Current saved offer loaded. Your unsaved text is preserved; review it again before publishing.':'Current saved offer loaded.');}
-    catch(error){if(e===state.epoch){let accountConfirmed=false;try{accountConfirmed=await confirmReader(actor,e);if(!accountConfirmed)return;}catch{/* Clear erased content even when the current account cannot be rechecked. */}if(e!==state.epoch)return;if(error.code==='workspace_content_erased'){removalView(accountConfirmed?{contentErased:true}:null);return;}state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say(error.message||'Saved status could not be confirmed.');}}
+    catch(error){if(e===state.epoch){let accountConfirmed=false;try{accountConfirmed=await confirmReader(actor,e);if(!accountConfirmed)return;}catch{/* Clear withheld content even when the current account cannot be rechecked. */}if(e!==state.epoch)return;if(error.code==='workspace_erasure_locked'){await lockedView(id);return;}if(error.code==='workspace_content_erased'){removalView(accountConfirmed?{contentErased:true}:null);return;}state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say(error.message||'Saved status could not be confirmed.');}}
   }
   async function openWorkspace(id){
     if(purgeIntent()){removalView(null);return;}
     renderedPath='/workspace/'+id;
     const e=state.epoch,actor=state.user?.id;clearView();view.append(h('p','Loading private workspace…'));
-    try{const workspace=await readCurrentWorkspace(id,actor,e);if(!workspace||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;currentWorkspaceId=id;clearDirty();clearView();
+    try{const workspace=await readCurrentWorkspace(id,actor,e);if(!workspace||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.removalMetadata=null;state.confirmed=true;currentWorkspaceId=id;clearDirty();clearView();
       const title=h('div',undefined,'workspace-title');title.append(link('All workspaces','/'),h('p',workspace.role==='merchant'?'CREATOR WORKSPACE':'BUYER REVIEW','eyebrow'),h('h1',workspace.projectName||'Commission'));
       title.append(button('Refresh saved offer',refreshWorkspace,true));discard=button('Discard unsaved changes',()=>{clearDirty();openWorkspace(id);},true);title.append(discard);view.append(title);
       const navigation=h('nav',undefined,'workspace-nav');navigation.setAttribute('aria-label','Workspace sections');
@@ -278,12 +290,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
         context:()=>({user:state.user?.id,verified:state.user?.emailVerified,id:state.workspace?.workspaceId,role:state.workspace?.role,recovery:state.user?.readOnly===true,quote:state.workspace?.currentQuote,source:state.workspace?.source||workspace.source,accepted:state.workspace?.accepted,openChange:state.workspace?.openChangeRequest?.id,generation:state.generation,blocked:blocked(),confirmed:state.confirmed,dirty:state.dirty||state.sourceDirty}),
         load:()=>api('workspaces/'+id+'/checkout'),send:async(path,input)=>{const result=await write('workspaces/'+id+'/checkout'+(path?'/'+path:''),input);if(result)await refreshWorkspace();return result;}});
       record=mountOfferRecord({parent:right,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,id:currentWorkspaceId,recovery:state.user?.readOnly===true,generation:state.generation,confirmed:state.confirmed,blocked:state.pending||!!state.intent}),load:async()=>{const workspace=await readCurrentWorkspace(id,state.user?.id,state.epoch);if(!workspace)throw Error('session_changed');return workspace;}});
-      if(state.user?.contentErasureEnabled===true)privacy=mountContentErasure({parent:right,h,button,check,
-        context:()=>({user:state.user?.id,epoch:state.epoch,id:currentWorkspaceId,generation:state.generation,sourceVersion:state.workspace?.source.version,sourceBinding:state.workspace?.source.binding,revision:state.workspace?.currentQuote?.revision||0,buyerJoined:state.workspace?.buyerJoined,confirmed:state.confirmed,dirty:state.dirty||state.sourceDirty,blocked:baseBlocked(),readBlocked:state.pending||!!state.intent}),
-        load:async before=>{if(!await confirmReader(before.user,before.epoch))throw Error('Your account changed.');const result=await api('workspaces/'+id+'/erasure',undefined,before.user);if(!await confirmReader(before.user,before.epoch))throw Error('Your account changed.');return result;},
-        send:async(action,input,before)=>{if(!await confirmReader(before.user,before.epoch)||before.epoch!==state.epoch||before.generation!==state.generation||before.sourceVersion!==state.workspace?.source.version||before.sourceBinding!==state.workspace?.source.binding||before.revision!==(state.workspace?.currentQuote?.revision||0)||before.buyerJoined!==state.workspace?.buyerJoined||state.dirty||state.sourceDirty)return null;const result=await write('workspaces/'+id+'/erasure/'+action,input);if(result){if(result.contentErased)removalView(result);else await refreshWorkspace();}return result;},
-        onReview:result=>{if(state.workspace?.workspaceId===id){const paused=result.request?.paused===true;if(state.workspace.erasurePending!==paused){state.merchantAck=null;state.buyerAck=null;changeAck=null;responseAck=null;withdrawAck=null;if(!paused)state.confirmed=false;}state.workspace.erasurePending=paused;actions();}},onErased:removalView});actions();
-    }catch(error){if(e===state.epoch){clearView();if(error.code==='workspace_content_erased'){try{if(!await confirmReader(actor,e))return;}catch{view.append(h('h1','Workspace unavailable'),h('p','Your account could not be confirmed.'));return;}if(e!==state.epoch)return;removalView({contentErased:true});return;}view.append(h('h1','Workspace unavailable'),h('p',error.message||'The workspace could not be read.'),link('Back to workspaces','/'));}}
+      if(state.user?.contentErasureEnabled===true)privacy=mountPrivacy(right,id);actions();
+    }catch(error){if(e===state.epoch){clearView();if(error.code==='workspace_erasure_locked'){await lockedView(id);return;}if(error.code==='workspace_content_erased'){try{if(!await confirmReader(actor,e))return;}catch{view.append(h('h1','Workspace unavailable'),h('p','Your account could not be confirmed.'));return;}if(e!==state.epoch)return;removalView({contentErased:true});return;}view.append(h('h1','Workspace unavailable'),h('p',error.message||'The workspace could not be read.'),link('Back to workspaces','/'));}}
   }
   function drawInvitation(workspace){
     if(!invitationBox)return;invitationCheck=null;invitationRevoke=null;invitationAck=false;
@@ -313,7 +321,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   async function signOut(){
     if(state.dirty||state.sourceDirty||state.pending)return;
     const e=++state.epoch;suppressAuth++;state.pending=true;
-    state.user=null;state.workspace=null;state.intent=null;state.confirmed=false;
+    state.user=null;state.workspace=null;state.removalMetadata=null;state.intent=null;state.confirmed=false;
     state.callback=null;state.draft={};state.createdWorkspaceId=null;currentWorkspaceId=null;
     clearDirty();clearView();session.replaceChildren();say('');
     view.append(h('p','Signing out…'));actions();
@@ -328,7 +336,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     }finally{state.pending=false;suppressAuth--;actions();}
   }
   async function loadSession(){
-    const e=++state.epoch;state.merchantAck=null;state.buyerAck=null;state.workspace=null;state.confirmed=false;state.user=null;state.intent=null;clearView();session.replaceChildren();
+    const e=++state.epoch;state.merchantAck=null;state.buyerAck=null;state.workspace=null;state.removalMetadata=null;state.confirmed=false;state.user=null;state.intent=null;clearView();session.replaceChildren();
     try{const user=await api('me',undefined,null);if(e!==state.epoch)return;state.user=user;state.intent=readIntent(user.id);clearDirty();session.replaceChildren(h('span',user.email||'Signed in'),button('Sign out',signOut,true));await loadRoute();if(e!==state.epoch||state.user?.id!==user.id)return;if(user.readOnly)say('Changes are temporarily paused. Saved records and previous-action checks remain available. Refresh this page after maintenance.');}
     catch(error){if(e!==state.epoch)return;state.user=null;state.workspace=null;state.intent=null;clearDirty();session.replaceChildren();await showAuth();if(error.status!==401)say(error.message||'The private service is unavailable.');}
   }

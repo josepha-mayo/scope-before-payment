@@ -56,6 +56,7 @@ test('disabled privacy routes cannot be enabled by browser flags and never authe
   const f=fixture();await rejected(f,request('workspaces/'+id+'/erasure'+action,{method:action?'POST':'GET',headers:{...headers,'X-Scope-Erasure-Enabled':'true'},...(action?{body:'{"contentErasureEnabled":true}'}:{})}),404,'route_not_found');assert.equal(f.identities(),0);
  }
  assert.throws(()=>fixture({id},{contentErasureEnabled:'true'}),/api_configuration/);
+ assert.throws(()=>fixture({id},{contentErasureEnabled:true,contentReadFenceEnabled:false}),/api_configuration/);
 });
 
 test('enabled privacy endpoints retain authentication, strict methods, origin, session and recovery guards before storage',async()=>{

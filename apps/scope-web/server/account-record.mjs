@@ -33,7 +33,7 @@ const queries={
 const sections=Object.keys(queries),exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===keys.slice().sort().join(',');
 const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
 const clock="SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at";
-const notice='Private Scope data copy collected across multiple reads, not an atomic database snapshot or signed agreement. Concurrent or later activity may be absent. Recorded acceptance and payment observations do not establish current payment or funds. Keep this file private.';
+const notice='Private Scope data copy collected across multiple reads, not an atomic database snapshot or signed agreement. Concurrent or later activity may be absent. Private fields are withheld after irreversible content-removal intent; null fields do not certify a completed datastore purge. Recorded acceptance and payment observations do not establish current payment or funds. Keep this file private.';
 export function createAccountRecordMethods({transaction,principal,fail}){
   return {
     async accountRecord(){

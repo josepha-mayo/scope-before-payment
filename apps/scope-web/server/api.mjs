@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { createWorkspaceStore, WorkspaceError } from './workspaces.mjs';
 import J from '../../../experiments/scope-to-quote/strict-json.js';
-import {workspaceContentErasureEnabled} from './erasure-release.mjs';
+import {workspaceContentErasureEnabled,workspaceContentReadFenceEnabled} from './erasure-release.mjs';
 
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const workspaceRoute = new RegExp('^/api/v1/workspaces/(' + uuid + ')(?:/(source|publish|accept|request-changes|withdraw-changes|draft|checkout|checkout/check|checkout/capture))?$');
@@ -10,8 +10,9 @@ const operationRoute = new RegExp('^/api/v1/operations/(' + uuid + ')$');
 const privacyRoute = new RegExp('^/api/v1/workspaces/(' + uuid + ')/erasure(?:/(request|consent|withdraw|admit|purge))?$');
 const userId = new RegExp('^' + uuid + '$');
 const reject = (code, status) => { throw new WorkspaceError(code, status); };
-function route(path,privacyEnabled) {
-  const privacy=privacyEnabled?privacyRoute.exec(path):null;
+function route(path,privacyEnabled,readFenceEnabled) {
+  const privacy=privacyEnabled||readFenceEnabled?privacyRoute.exec(path):null;
+  if(privacy&&privacy[2]&&!privacyEnabled)return null;
   if(privacy)return {action:'erasure-'+(privacy[2]||'read'),id:privacy[1],methods:[privacy[2]?'POST':'GET']};
   if(path==='/api/v1/account-record')return {action:'account-record',methods:['GET']};
   const exportPage=/^\/api\/v1\/account-record\/([A-Za-z0-9_-]{1,1500})$/.exec(path);
@@ -46,15 +47,15 @@ async function readBody(request, timeoutMs) {
 }
 // Dependencies are server-owned functions. The production entry point injects
 // Netlify Identity and Database; there is no request-header/test-login fallback.
-export function createApiHandler({ getUser, getPool, draftProvider, checkoutProvider, contentErasureEnabled=workspaceContentErasureEnabled,erasureLedger, canWrite=()=>true, report=()=>{}, bodyTimeoutMs = 5000 }) {
-  if (typeof getUser !== 'function' || typeof getPool !== 'function' || typeof canWrite!=='function' || typeof contentErasureEnabled!=='boolean' || typeof report!=='function' || !Number.isInteger(bodyTimeoutMs) || bodyTimeoutMs < 10 || bodyTimeoutMs > 5000) throw new TypeError('api_configuration');
+export function createApiHandler({ getUser, getPool, draftProvider, checkoutProvider, contentErasureEnabled=workspaceContentErasureEnabled,contentReadFenceEnabled=contentErasureEnabled||workspaceContentReadFenceEnabled,erasureLedger, canWrite=()=>true, report=()=>{}, bodyTimeoutMs = 5000 }) {
+  if (typeof getUser !== 'function' || typeof getPool !== 'function' || typeof canWrite!=='function' || typeof contentErasureEnabled!=='boolean' || typeof contentReadFenceEnabled!=='boolean' || contentErasureEnabled&&!contentReadFenceEnabled || typeof report!=='function' || !Number.isInteger(bodyTimeoutMs) || bodyTimeoutMs < 10 || bodyTimeoutMs > 5000) throw new TypeError('api_configuration');
   const writable=()=>{try{return canWrite()===true;}catch{return false;}};
   return async function handle(request,context) {
     const traceId = randomUUID(),started=performance.now();let action='unknown';
     const headers = { 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer', 'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'", 'X-Request-Id': traceId };
     const send = (body, status = 200, extra = {}) => {const response=Response.json(body, { status, headers: { ...headers, ...extra } });try{report({traceId,platformRequestId:context?.requestId,action,method:request.method,status,code:status<400?'ok':body.error?.code,durationMs:performance.now()-started});}catch{}return response;};
     try {
-      const url = new URL(request.url), target = route(url.pathname,contentErasureEnabled);
+      const url = new URL(request.url), target = route(url.pathname,contentErasureEnabled,contentReadFenceEnabled);
       if (!target) reject('route_not_found', 404);
       action=target.action;
       let pageCursor=null;
@@ -79,7 +80,7 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
       // Public callers must invite a verified recipient who separately joins.
       // The store's direct-ID setup remains for trusted server/owned fixtures.
       if(target.action==='collection'&&request.method==='POST'&&(!input||!Object.hasOwn(input,'buyerEmail')||Object.hasOwn(input,'buyerId')))reject('workspace_invitation_required',422);
-      const store = createWorkspaceStore({ pool: await getPool(), getPrincipal: async () => user, draftProvider, checkoutProvider,contentErasureEnabled,erasureLedger,canWrite:writable });
+      const store = createWorkspaceStore({ pool: await getPool(), getPrincipal: async () => user, draftProvider, checkoutProvider,contentErasureEnabled,contentReadFenceEnabled,erasureLedger,canWrite:writable });
       let result;
       switch (target.action) {
         case 'erasure-read': result=await store.readContentErasure(target.id);break;

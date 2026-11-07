@@ -2,10 +2,11 @@
 
 This branch is building the complete content-erasure flow. It is not an enabled
 feature or a privacy-compliance claim. `workspaceContentErasureEnabled` remains
-false. The draft now has database request/consent/claim/completion states and
+false. The independent `workspaceContentReadFenceEnabled` also remains false.
+The draft now has database request/consent/claim/completion states and
 an explicit atomic payload-purge store method, server-gated privacy routes and
-privacy-history downloads. The browser flow is implemented behind the same
-server capability. Routes and controls remain unavailable by default, and no
+privacy-history downloads, plus an external-intent content/action fence. The
+browser flow is implemented behind the server capability. Routes and controls remain unavailable by default, and no
 production store access is enabled. Only invented test fixtures are purged.
 Account/Identity erasure, provider retention, hosting logs and
 backups remain distinct requirements; do not turn this document into a fixed
@@ -53,8 +54,8 @@ Follow the [Netlify Blobs documentation](https://docs.netlify.com/build/data-and
 2. Reject self-service erasure for any checkout attempt or unresolved AI claim.
    Those cases need operator reconciliation and a stated retention decision.
    Do not destroy evidence to make an unknown provider result appear settled.
-3. Pause ordinary workspace writes when a content-erasure request is admitted.
-   Keep saved reads and downloads available. A joined buyer and creator must
+3. Pause ordinary workspace writes while a content-erasure review is active.
+   Keep saved reads and downloads available until irreversible locking. A joined buyer and creator must
    each explicitly confirm; an unjoined invitation has only the creator as a
    member. A member can withdraw before irreversible admission. Bind consent to
    the paused saved state, not an unsaved browser draft or changed account.
@@ -70,8 +71,8 @@ Follow the [Netlify Blobs documentation](https://docs.netlify.com/build/data-and
 6. Enforce those transitions in PostgreSQL as well as the API. Do not disable
    immutable triggers or grant a general update/delete bypass. Completion must
    be impossible unless all required payload copies are actually removed.
-7. Clear the requesting browser's private content when final confirmation is
-   sent, including an uncertain reply. Recover the original operation by GET;
+7. Clear the requesting browser's private content before sending irreversible
+   admission or final purge, including an uncertain reply. Recover the original operation by GET;
    a local screen cleanup is not a claim that the server completed erasure.
 8. Consult the external ledger before releasing restored content or admitting
    new workspace actions. If ledger state cannot be established, fail closed.
@@ -95,9 +96,8 @@ create or publish operation cannot stand in for a privacy decision. No network w
 the claim commit; duplicate actions and saved-status reads never re-admit it.
 Payment history and unresolved AI remain review exceptions, not permission to
 discard their evidence. Admission itself does not redact any payload.
-The owned restore drill also checks that an admitted request stays paused and
-that replaying its original operation makes no new external ledger write. This
-is admission recovery, not proof of erased-content protection after restore.
+The owned restore drill also checks that an admitted request stays locked and
+that replaying its original operation makes no new external ledger write.
 
 The public HTTP create boundary now requires an email invitation. Direct buyer
 UUID assignment remains a trusted-server fixture path and is not accepted from
@@ -126,20 +126,51 @@ Already-issued account-copy cursors read the redacted payload values rather
 than an earlier content snapshot. Operation status returns minimal retained
 metadata; replay of a redacted create response cannot create a second workspace.
 An old AI source claim continues to block fresh authority in another workspace.
-These are current-row protections, not erased-content restore protection.
 Null redaction does not physically wipe PostgreSQL MVCC tuples, WAL or managed
 backups, recall already-sent responses or delete copies users downloaded.
 Those retention boundaries require separate platform/operator qualification.
 
-The owned restore drill checks both unpurged admission state and already-purged
-fixtures. Restoring a post-purge snapshot preserves absent payloads, denied
-content reads and completion recovery with zero external I/O. It does not prove
-that a pre-erasure snapshot, old deployment or provider backup is protected.
+The owned restore drill keeps its fixture ledger outside the PostgreSQL dump.
+After the original intents and purges, it restores one snapshot before claim
+and another after claim but before purge. Both retain old payloads in SQL, but
+the new application boundary withholds them and rejects ordinary new actions.
+A matching restored claim is not permission to release content. GET neither
+purges rows nor reconstructs a lost claim. The post-claim fixture can explicitly
+reapply its exact original purge input under the restored original claim, with
+no ledger write. The pre-claim fixture stays withheld and requires original
+admission recovery; external metadata cannot manufacture the missing consent.
+Post-purge snapshots preserve absent payloads and completion recovery with zero
+external I/O. These owned checks do not qualify native hosted restores, older
+deployments or provider backups.
 
-The API exposes GET workspace erasure status and separate POST request, consent,
-withdrawal, admission and purge actions only under a server-owned Boolean flag.
-The false compiled release rejects all these routes before identity or storage
-access. Request JSON, headers and query strings cannot enable them. Enabled
+The read/action fence resolves current membership or an authorized invitation
+before probing the original workspace key. A local claim or completion already
+withholds content without an external dependency. Otherwise each private release
+consults the strong ledger, with no negative cache. Any canonical intent locks
+the workspace even if local admission records are absent. Malformed, foreign,
+unavailable or unknown evidence fails closed. Direct reads and ordinary actions,
+including AI requests, checkout and invitation joining, are fenced before their
+implementation; private responses are checked again before release. SQL clients
+are released before network IO. Collection and copy pages have a total three-second
+window and at most eight concurrent probes; cancellation reaches the SDK transport
+and stops queued or late dispatches.
+
+Workspace/invitation labels and private account-copy sections are projected to
+allowlisted metadata with private fields null and `contentWithheld` when locked.
+Page counts and cursors remain intact, including fully withheld pages. A null
+field does not certify a completed purge. Metadata-only original-operation and
+privacy recovery remain available on unknown storage evidence; no GET re-admits
+an intent or grants fresh authority. Principal identity is resolved once and
+pinned across each store invocation's awaits. Copies already sent to a client
+remain a separate retention boundary.
+
+The API exposes separate POST request, consent, withdrawal, admission and purge
+actions only under the server-owned erasure Boolean. GET metadata also remains
+available when only the independent read fence is enabled. Enabling new erasures
+requires that fence; after the first admission, pausing new erasures must never
+disable the fence or original metadata recovery. Both false compiled flags reject
+these routes before identity or storage access. Request JSON, headers and query
+strings cannot enable them. Enabled
 routes retain the same origin/session/identity/body/method guards as other
 private actions. The native factory uses automatic platform credentials and
 also checks the recovery hold before admission and each write transport.
@@ -159,19 +190,22 @@ a read selector, not a retained content snapshot or membership grant.
 The browser offers distinct request, agreement, cancellation, irreversible lock
 and final removal confirmations, bound to the signed-in account and saved
 version. A member must load the version covered by the review before agreeing.
-Ordinary writes pause while data downloads remain available. Unsaved edits and
+Ordinary writes pause during review, with content downloads available before
+locking. Unsaved edits and
 other original pending actions prevent privacy decisions. The same strict
 actor/path/request-ID journal records privacy actions without content payloads.
 
-Before sending final removal, the browser saves that original reference and
+Before sending admission or final removal, the browser saves that original reference and
 clears conversation, offer, editor, AI/payment/history and download views and
 acknowledgements. Epoch/generation changes reject held private replies and
 downloads. Lost replies keep that view clear; reload/navigation and persisted
 page restoration check the original reference before automatic private reads.
 Recovery is GET-only, never another POST. A completed original operation shows
-minimal completion status without reopening the content view. Session changes
-invalidate older confirmations. This client behavior does not provide the
-separate server fence required for a pre-erasure restore or older deployment.
+minimal completion status without reopening the content view. A locked original
+admission shows only removal metadata and the separate explicit purge decision.
+Missing original admission records show operator review without replacement
+controls. Session changes invalidate older confirmations. Client cleanup and the
+new server boundary do not retrofit older deployments.
 An authenticated stale POST that reports an already-erased workspace clears
 its old private view and reports that workspace state, without claiming the
 new action completed. The removal navigation opens the disclosure at a visible

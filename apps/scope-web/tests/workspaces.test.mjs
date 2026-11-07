@@ -865,6 +865,26 @@ test('account-copy cutoffs preserve PostgreSQL microseconds without dropping the
  const legacy=JSON.parse(Buffer.from(start.cursor,'base64url').toString());legacy.at=prefix+'.124Z';assert.ok((await store.accountRecordPage(Buffer.from(JSON.stringify(legacy)).toString('base64url'))).entries.some(x=>x.workspaceId===id));
 });
 
+test('irreversible claims withhold current payloads, exports and old operation responses before any purge',async()=>{
+ const f=await fullErasureFixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id);
+ assert.equal(privacy.admitted.contentErasureLocked,true);assert.equal(privacy.admitted.contentErased,false);assert.ok(before.sources[0].messages);
+ await assert.rejects(f.merchant.read(f.id),code('workspace_erasure_locked'));await assert.rejects(f.merchant.readDraft(f.id),code('workspace_erasure_locked'));await assert.rejects(f.buyer.readCheckout(f.id),code('workspace_erasure_locked'));
+ const rows=(await accountCopy(privacy.merchant)).sections;assert.equal(rows.conversations[0].messages,null);assert.equal(rows.conversations[0].contentWithheld,true);assert.equal(rows.offers[0].fields,null);assert.equal(rows.aiReviews[0].requestText,null);assert.equal(rows.invitations[0].recipientEmail,null);assert.ok(rows.privacyHistory.length>0);
+ for(const op of before.operations){const store=op.actor_id===f.merchantId?privacy.merchant:privacy.buyer,status=await store.operationStatus(op.request_id);assert.equal(status.operationRetained,true);assert.equal(status.contentErasureLocked,true);assert.equal(/PRIVATE_(?:NOTE|SOURCE|USAGE)_SENTINEL/.test(JSON.stringify(status)),false);}
+ assert.deepEqual(await erasurePayloadRows(f.id),before);assert.equal(l.admits,1);
+});
+
+test('pausing new erasure retains the external read fence and metadata-only GET routes',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),paused=createWorkspaceStore({pool,getPrincipal:async()=>({id:f.merchantId}),contentErasureEnabled:false,contentReadFenceEnabled:true,erasureLedger:l.ledger});
+ await assert.rejects(paused.read(f.id),code('workspace_erasure_locked'));assert.equal((await paused.readContentErasure(f.id)).contentErasureLocked,true);await assert.rejects(paused.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
+ let calls=0;const handler=createApiHandler({getUser:async()=>({id:f.merchantId}),getPool:()=>{calls++;return pool;},contentErasureEnabled:false,contentReadFenceEnabled:true,erasureLedger:l.ledger});const base='https://scope.example/api/v1/workspaces/'+f.id+'/erasure';assert.equal((await handler(new Request(base))).status,200);const before=calls;assert.equal((await handler(new Request(base+'/request',{method:'POST',headers:{Origin:'https://scope.example','Content-Type':'application/json','X-Scope-Action':'explicit-user-action','X-Scope-Session':f.merchantId},body:'{"contentReadFenceEnabled":false}'}))).status,404);assert.equal(calls,before);assert.equal(l.admits,1);
+});
+
+test('a principal is resolved once per public invocation and retained through asynchronous fence checks',async()=>{
+ const f=await fixture();let reads=0;const ledger={read:async()=>{await Promise.resolve();return null;}},store=createWorkspaceStore({pool,getPrincipal:async()=>({id:++reads===1?f.merchantId:f.buyerId}),contentReadFenceEnabled:true,erasureLedger:ledger});
+ assert.equal((await store.read(f.id)).role,'merchant');assert.equal(reads,1);await assert.rejects(store.readDraft(f.id),code('workspace_role_required'));assert.equal(reads,2);
+});
+
 test('content erasure admission is disabled by default and exposes no HTTP route',async()=>{
  const f=await fixture();await assert.rejects(f.merchant.readContentErasure(f.id),code('workspace_erasure_unavailable'));await assert.rejects(f.merchant.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
  await assert.rejects(f.merchant.purgeContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
@@ -886,14 +906,14 @@ test('both joined members must consent before one durable claim and one external
  assert.equal(done.request.state,'recorded_pending_purge');assert.equal(done.ledgerObservation,'matching');assert.equal(done.contentErased,false);assert.equal(l.admits,1);assert.equal(l.objects.size,1);
  const intent=done.request.claim.intent;assert.equal(intent.workspaceId,f.id);assert.equal(intent.merchantId,f.merchantId);assert.equal(intent.buyerId,f.buyerId);assert.equal(intent.claimId,done.request.claim.id);assert.equal(intent.sourceBinding,f.created.source.binding);
  await merchant.admitContentErasure(f.id,admission);assert.equal((await merchant.operationStatus(admission.requestId)).request.claim.id,done.request.claim.id);assert.equal((await buyer.readContentErasure(f.id)).ledgerObservation,'matching');assert.equal(l.admits,1);
- await assert.rejects(buyer.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_admitted'));await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(rid)),code('workspace_erasure_admitted'));
- assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.content_erasure_claims WHERE workspace_id=$1',[f.id])).rows[0].n,1);assert.deepEqual((await f.merchant.read(f.id)).source.messages,messages);
+ await assert.rejects(buyer.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_locked'));await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(rid)),code('workspace_erasure_admitted'));
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.content_erasure_claims WHERE workspace_id=$1',[f.id])).rows[0].n,1);await assert.rejects(f.merchant.read(f.id),code('workspace_erasure_locked'));
 });
 test('a missing external reply retains the original erasure claim and never resends its intent',async()=>{
  const f=await fixture();let writes=0;const unavailable={read:async()=>null,admit:async()=>{writes++;throw Error('PRIVATE_AUTHORED_STORAGE_FAILURE');}},merchant=erasureStore(f,f.merchantId,unavailable),buyer=erasureStore(f,f.buyerId,unavailable);
  const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const input=erasureAdmit(rid),pending=await merchant.admitContentErasure(f.id,input);
  assert.equal(pending.request.state,'admitted_pending_ledger');assert.equal(pending.ledgerObservation,'absent');assert.equal(pending.contentErased,false);await merchant.admitContentErasure(f.id,input);await merchant.operationStatus(input.requestId);await merchant.readContentErasure(f.id);assert.equal(writes,1);
- await assert.rejects(merchant.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_admitted'));await assert.rejects(merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id)),code('workspace_erasure_pending'));
+ await assert.rejects(merchant.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_locked'));await assert.rejects(merchant.requestContentErasure(f.id,{requestId:randomUUID(),sourceVersion:1,sourceBinding:f.created.source.binding,revision:0,buyerJoined:true,confirmation:'request-workspace-content-erasure'}),code('workspace_erasure_locked'));
 });
 test('withdrawing erasure resumes ordinary work and a replacement request cannot inherit earlier consent',async()=>{
  const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;

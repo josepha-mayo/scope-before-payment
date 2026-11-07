@@ -17,6 +17,7 @@ function checked(value){
  if(!exact(value,keys)||value.format!=='scope-content-erasure-intent/v1'||!uuid(value.workspaceId)||!uuid(value.claimId)||!uuid(value.merchantId)||value.buyerId!==null&&(!uuid(value.buyerId)||value.buyerId===value.merchantId)||!integer(value.sourceVersion,1,32)||!integer(value.revision,0,24)||typeof value.sourceBinding!=='string'||!/^[a-f0-9]{64}$/.test(value.sourceBinding)||typeof value.admittedAt!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value.admittedAt)||!Number.isFinite(Date.parse(value.admittedAt))||new Date(value.admittedAt).toISOString()!==value.admittedAt)invalid();
  return Object.fromEntries(keys.map(k=>[k,value[k]]));
 }
+export {checked as checkedErasureIntent};
 const keyFor=id=>{if(!uuid(id))invalid();return 'workspaces/'+id;};
 async function recordBody(stream,signal){
  if(!stream||typeof stream.getReader!=='function')invalid();
@@ -36,25 +37,25 @@ async function recordBody(stream,signal){
 // from AI/financial once claims; this adapter grants neither kind of authority.
 export function createErasureLedger({openStore,request=fetch,timeoutMs=3000}){
  if(typeof openStore!=='function'||typeof request!=='function'||!Number.isInteger(timeoutMs)||timeoutMs<10||timeoutMs>3000)throw TypeError('erasure_ledger_configuration');
- async function bounded(action){
-  const controller=new AbortController();let live=true,timer;
+ async function bounded(action,parentSignal){
+  const controller=new AbortController();let live=true,timer,stop;
   const transport=async(input,init)=>{
    if(!live||controller.signal.aborted)throw new ErasureLedgerError('erasure_ledger_unavailable');
    const response=await request(input,{...init,redirect:'error',signal:controller.signal});
    if(!live||controller.signal.aborted){void response.body?.cancel().catch(()=>{});throw new ErasureLedgerError('erasure_ledger_unavailable');}return response;
   };
   try{
-   const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{live=false;controller.abort();reject(new ErasureLedgerError('erasure_ledger_unavailable'));},timeoutMs);});
-   return await Promise.race([Promise.resolve().then(()=>action(openStore(transport),controller.signal)),deadline]);
+   const deadline=new Promise((_,reject)=>{stop=()=>{live=false;controller.abort();reject(new ErasureLedgerError('erasure_ledger_unavailable'));};timer=setTimeout(stop,timeoutMs);parentSignal?.addEventListener('abort',stop,{once:true});if(parentSignal?.aborted)stop();});
+   return await Promise.race([Promise.resolve().then(()=>{if(!live)throw new ErasureLedgerError('erasure_ledger_unavailable');return action(openStore(transport),controller.signal);}),deadline]);
   }catch(error){if(error instanceof ErasureLedgerError)throw error;throw new ErasureLedgerError('erasure_ledger_unavailable');}
-  finally{live=false;clearTimeout(timer);controller.abort();}
+  finally{live=false;clearTimeout(timer);parentSignal?.removeEventListener('abort',stop);controller.abort();}
  }
  async function readFrom(store,id,signal){
   const entry=await store.get(keyFor(id),{type:'stream',consistency:'strong'});
   if(entry===null)return null;const result=await recordBody(entry,signal);if(result.workspaceId!==id)invalid();return result;
  }
  return Object.freeze({
-  read:async id=>{keyFor(id);return bounded((store,signal)=>readFrom(store,id,signal));},
+  read:async(id,{signal}={})=>{keyFor(id);return bounded((store,ownSignal)=>readFrom(store,id,ownSignal),signal);},
   admit:async value=>{
    const record=checked(value),key=keyFor(record.workspaceId),text=JSON.stringify(record);
    return bounded(async(store,signal)=>{
