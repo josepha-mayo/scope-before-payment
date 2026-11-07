@@ -1,0 +1,14 @@
+title = "Scope public-source checks"
+[extend]
+useDefault = true
+
+# These are public browser-storage labels, not credentials. Keep the exception
+# exact and limited to the client and tests that use the same labels.
+[[rules]]
+id = "generic-api-key"
+[[rules.allowlists]]
+description = "Three literal public browser-storage labels"
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''^scope-offer-record-intent-v1$''', '''^scope-offer-record-buyer-v1$''', '''^scope-offer-text-restore-review-v1$''']
+paths = ['''(?:^|/)experiments/scope-to-quote/(?:offer-record-client\.js|tests/(?:revision-request-client-test|offer-record-bridge-test)\.js)$''']

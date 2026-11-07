@@ -1,0 +1,21 @@
+.env
+.env.*
+!.env.example
+__pycache__/
+node_modules/
+.netlify/
+playwright-report/
+test-results/
+*.sqlite
+*.sqlite3
+*.db
+wordpress/
+runtime/
+
+# Hosted app build output
+apps/scope-web/dist/
+apps/scope-web/dist-test/
+apps/scope-web/restore-receipt.json
+
+*.pem
+*.key

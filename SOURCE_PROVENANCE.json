@@ -1,0 +1,770 @@
+{
+  "kind": "scope_clean_source_import_v1",
+  "upstreamCommit": "7c447034ad7db3772cdaa5dcaed43fbc28caf725",
+  "copiedFiles": [
+    {
+      "path": "LICENSE",
+      "sha256": "43895ca3807fa83714cf068a878bb497e36d8be42bbca9393208e7ef9527da3d"
+    },
+    {
+      "path": "apps/scope-web/index.html",
+      "sha256": "ab6e98bc11970808f224d8e5d4bdc66356c3a819628a636e74a11d086c933b82"
+    },
+    {
+      "path": "apps/scope-web/netlify.toml",
+      "sha256": "6556cd098701e065edc7f12c636a0167c04be249bf3a1c1ea4d48acf81175d66"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107010000_workspace_records.sql",
+      "sha256": "cc86650f91f2bde9469d0e0738b88bcc22d84317e1882bdc670db228e6558dd5"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107013000_buyer_invitations.sql",
+      "sha256": "3629a3a2b2abca8e0bf8f1f2ca0e7cf674289736d4d48e9ce7d0a7876ec7bf86"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107014500_workspace_labels.sql",
+      "sha256": "80073210062697a4e274f5cccd57f83d1ca6abcfe92f389c1f910e79427ad023"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107023000_buyer_change_requests.sql",
+      "sha256": "2e960f2f892f987d937e2bfcd04487971761c780968d1a5704b51d1c72a63302"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107024500_change_request_withdrawal.sql",
+      "sha256": "5b50cdda8542fd5398a57d4a3263a7634c33fbfcca6d79bf42669d5c36ef6d94"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107033000_ai_review_receipts.sql",
+      "sha256": "3880c80ec026418ee6bc283f21c6627dd4e58657cf7d4483e75635bb0488f8d7"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107103000_checkout_records.sql",
+      "sha256": "219ad4fe440d419957225f1d1ebc2df2bacc5147095026ba7c2a8b8458e24e5a"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107114000_paypal_auth_journal.sql",
+      "sha256": "b03787d1492676ed882a782922f77426d481418043cdae31292e9fe6716fc440"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107122000_paypal_webhook_inbox.sql",
+      "sha256": "37bcb47db8d01faa19af24aee6963c315eaed2f24f18d16abb2782ebe16557c7"
+    },
+    {
+      "path": "apps/scope-web/netlify/database/migrations/20261107130000_current_paypal_events.sql",
+      "sha256": "b3ef66044e896488bfc3f7e7d115f567cc280d8c2f8d46bec782c343c7807e06"
+    },
+    {
+      "path": "apps/scope-web/netlify/functions/api.mjs",
+      "sha256": "070940da7c2257a8dcc9241ea5bcb48eb6c71004bc0b7b09035b7f4512d204a6"
+    },
+    {
+      "path": "apps/scope-web/netlify/functions/paypal-webhook.mjs",
+      "sha256": "4e2527fd31130bfef7ef121475a98d166ee6fea311c810d48b5b38e829b79c24"
+    },
+    {
+      "path": "apps/scope-web/package-lock.json",
+      "sha256": "006ad1bf68f8b74bb4b5dbbe04c7ccac8a02a77fa42ce4094066952bb23fa7a8"
+    },
+    {
+      "path": "apps/scope-web/package.json",
+      "sha256": "b60b8976bc9ebc2fc2a07aa1d662015da363c38d619d7a22d1ce92d0755c70bb"
+    },
+    {
+      "path": "apps/scope-web/server/ai-protocol.mjs",
+      "sha256": "f62b38972d0f4cb171ae36c4e3530d8c528dff6cd7e12f74704dd77bc6e1c097"
+    },
+    {
+      "path": "apps/scope-web/server/ai-provider.mjs",
+      "sha256": "8d370583fb8c92a1d2de66638bc1111edb3fcc81090e50fd58cb381c7e1e5f59"
+    },
+    {
+      "path": "apps/scope-web/server/ai-store.mjs",
+      "sha256": "36c169540cd187ff2fda43d0fa99e76c854e7e2f6aa634ef35451d54b8fd28b7"
+    },
+    {
+      "path": "apps/scope-web/server/api.mjs",
+      "sha256": "d1ff23fb0b21fcb1d07b14df902e8a6ca6614184ade662865963abd090145fb2"
+    },
+    {
+      "path": "apps/scope-web/server/checkout-contract.mjs",
+      "sha256": "32c6117373403dbf84693c35f7d83474b818324beb614ccd9fb4ef90e3e02f96"
+    },
+    {
+      "path": "apps/scope-web/server/checkout-store.mjs",
+      "sha256": "7da41cc6426a1f691adee360aaffeb6b17bb1ecd20f8a984b81069822e6cc106"
+    },
+    {
+      "path": "apps/scope-web/server/db-connection.mjs",
+      "sha256": "8748424d9242017ceadef9daec61fda99ab121082b6f4b02ea305a9e3b22d9bc"
+    },
+    {
+      "path": "apps/scope-web/server/observability.mjs",
+      "sha256": "755a1c7e3953d43a876118377aff4937889118aab0f04ceb52f56789ce5d6dc2"
+    },
+    {
+      "path": "apps/scope-web/server/paypal-http.mjs",
+      "sha256": "6fdf09b2bf4675020c005e860b65c99134e40455cb4fcd1f8d429f78b6a260b1"
+    },
+    {
+      "path": "apps/scope-web/server/paypal-provider.mjs",
+      "sha256": "f035953154ab21b047ee0b6ca713338b86043e6c39588bef1c5dd147f775e649"
+    },
+    {
+      "path": "apps/scope-web/server/paypal-tokens.mjs",
+      "sha256": "8de4daabb405804c34d9cb7d2526dd8abd269a633f20e8eab7ca651041599078"
+    },
+    {
+      "path": "apps/scope-web/server/paypal-webhook.mjs",
+      "sha256": "6c10419a383115fb524d1fd46622f897228b8312ff6d117d57738b15a38832cf"
+    },
+    {
+      "path": "apps/scope-web/server/principal.mjs",
+      "sha256": "1dc75fd778d93aeddc9b47883aef7a758f818dbc13eedeaf796e3a0d6b11167b"
+    },
+    {
+      "path": "apps/scope-web/server/recovery-release.mjs",
+      "sha256": "7d9f8268fa37af6a8395691fc34ad9ddd68103074fa5c25bf2564ec329d31fec"
+    },
+    {
+      "path": "apps/scope-web/server/recovery.mjs",
+      "sha256": "162da5b662dd54e8cdd336ef01b248f29d5053d13714789eb84446191f8efcec"
+    },
+    {
+      "path": "apps/scope-web/server/runtime-env.mjs",
+      "sha256": "3c88c425a9afbf0cd422f2f30c4eb57b13990834ccbbf11d21726d8f2b2d2fd2"
+    },
+    {
+      "path": "apps/scope-web/server/webhook-store.mjs",
+      "sha256": "52dd4be49c97e573963a71f714f5b20ecc5a63e1171c0c09460fd0ca65a9cd80"
+    },
+    {
+      "path": "apps/scope-web/server/workspaces.mjs",
+      "sha256": "0bc0f15b977afc456f03543375b7873f114ffe11a36c1b23eee4982736f11d37"
+    },
+    {
+      "path": "apps/scope-web/src/ai-review.mjs",
+      "sha256": "ea9e81e89b6308bd68684cd88a9862fa0b849a513e19e1c109ba99a87ea3c8c4"
+    },
+    {
+      "path": "apps/scope-web/src/app.mjs",
+      "sha256": "733227d44a4b7e23340249c6407bedb982175665dd181fa1b37cb3da87288864"
+    },
+    {
+      "path": "apps/scope-web/src/checkout.mjs",
+      "sha256": "a1f5b5b0fa2fe00e08d6243ebcc141a80f87abc2784740fdd4f6644aecb14e81"
+    },
+    {
+      "path": "apps/scope-web/src/main.mjs",
+      "sha256": "215865d14c3b7380db67e1eb0e5819681fae075b7d0a2377ee340f223a796093"
+    },
+    {
+      "path": "apps/scope-web/src/offer-record.mjs",
+      "sha256": "8e8e0d46c01578d1b22e110d9f64f7d3491f9dac3ea1121b3e84011dcbbf0745"
+    },
+    {
+      "path": "apps/scope-web/src/style.css",
+      "sha256": "be533c8ba2769171c3692abc9e8b02ac34a51423539abf0c3ac18e828cad1dca"
+    },
+    {
+      "path": "apps/scope-web/tests/ai.test.mjs",
+      "sha256": "3e7fe9b6a8813e9f7d2c43bb476cc0a35ac299638fa758643a60524bb3d75900"
+    },
+    {
+      "path": "apps/scope-web/tests/api.test.mjs",
+      "sha256": "1ec5162a18f33948db10259e8e1c3964703f016adb53be91693f303673789ed6"
+    },
+    {
+      "path": "apps/scope-web/tests/browser/entry.mjs",
+      "sha256": "42c2ca80bf33047392ad9a5f246fb00a961270686cff2b8fd7769b326a9aa85b"
+    },
+    {
+      "path": "apps/scope-web/tests/browser/index.html",
+      "sha256": "0d44bb56cac66e76c6704f2b8a16dc2284db63783bf7a07525e61383aa69ccf2"
+    },
+    {
+      "path": "apps/scope-web/tests/browser/server.mjs",
+      "sha256": "77433337bf58d5259cca2238ddf9b473eda51e19d20d314080015b0e72adac53"
+    },
+    {
+      "path": "apps/scope-web/tests/browser/vite.config.mjs",
+      "sha256": "c3e62e0855a059f762a39ea33fc8d3cd91508a1a11b3904daebca6661813f633"
+    },
+    {
+      "path": "apps/scope-web/tests/checkout.test.mjs",
+      "sha256": "c3a9ddfd5de569f6b401248f36d95a78a38f68a7d3bd1ad610b851bdd872d21b"
+    },
+    {
+      "path": "apps/scope-web/tests/connection.test.mjs",
+      "sha256": "3acb2f44f38d122231e913c345928e37f22313f78b99377d1b3ceedf0ee7d0eb"
+    },
+    {
+      "path": "apps/scope-web/tests/fixtures/checkout.mjs",
+      "sha256": "80bfc76a373183bf68ee1ca37f8760c3ea50dda40344acaebc2f0ffd9c6942eb"
+    },
+    {
+      "path": "apps/scope-web/tests/fixtures/webhook.mjs",
+      "sha256": "f5514938c2f36d8ca1b62cb4d414c960952dc0c2024213154ac17c28db89e1a7"
+    },
+    {
+      "path": "apps/scope-web/tests/observability.test.mjs",
+      "sha256": "df9dd47205508bbdd36be777b8e27987ca623d2762e56b4688793926cf52a88a"
+    },
+    {
+      "path": "apps/scope-web/tests/offer-record.test.mjs",
+      "sha256": "0e0e5b0136a2b331fcd8ab5b99c1243b9c1d7bef89cfd99064794b99b92a647c"
+    },
+    {
+      "path": "apps/scope-web/tests/paypal.test.mjs",
+      "sha256": "069b44ede1aebdd849c1d0bc9faaf5f0edb6ef5e0cb5a585ad1a79b5695ca270"
+    },
+    {
+      "path": "apps/scope-web/tests/principal.test.mjs",
+      "sha256": "1cf22bb6dbad84a3223a559889760e99c5e6bdaa41c3d6b44e56ec3d1275ef13"
+    },
+    {
+      "path": "apps/scope-web/tests/recovery.test.mjs",
+      "sha256": "2aeee2ef53c018b1235c203ac6cb72358ae8ba3fe4803512d533c5457607da4b"
+    },
+    {
+      "path": "apps/scope-web/tests/runtime.test.mjs",
+      "sha256": "c97ddcd9090956767db3f535f4ce9e7eac850e24b5aa8975d268ff9bbec2d332"
+    },
+    {
+      "path": "apps/scope-web/tests/webhook.test.mjs",
+      "sha256": "9cc72d6141b369d4823f34e56d8596af1e9ac07d8653fb342f4d9d2bd3c2a3bd"
+    },
+    {
+      "path": "apps/scope-web/tests/workspaces.test.mjs",
+      "sha256": "2d18c44188ffcec99f90329e91c8dab507d7ed76d1c9e1dc9f38798651e088c6"
+    },
+    {
+      "path": "apps/scope-web/tools/restore-drill.mjs",
+      "sha256": "5f52fc743b36259595f92b70d7e24b50e90f77d07525ff5a3cd011e005d250a8"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/live-offer-checkout-client.js",
+      "sha256": "17a0571887be1be0547246a87cd0493446280a713d7f264b53176b4abcfe5ef5"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/live-offer-checkout-http.js",
+      "sha256": "e5b3d6fcd505e76bfa2ec9b8886863803f17754d3121bde8dba3faa5852eb865"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/live-offer-client.js",
+      "sha256": "bba0ba3220d5c9d9a947f8f46f853ccb703351eb10dfb1c3508fe3de03f211ee"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/live-server.js",
+      "sha256": "abc7690f117f9205b507afe20ae7e8acdfd18334fe08c69405d585f17c375fd3"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-amount-diagnostic.js",
+      "sha256": "071e801ad00046a288b08d320f0ebfb2a8918f3b4b57c70512ced0833e99505d"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-checkout-client.js",
+      "sha256": "b98e6e6bcf28e68b831807c81b732ad35f82b121d0cd2c73915cb85b62f0eb44"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-checkout-http.js",
+      "sha256": "2b42ed29e1ca6b81867f651d040b3593c3bef44c0fb144d9fead0ffd1be48a5a"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-payment-journal.js",
+      "sha256": "6fb0040e2d6ed7667e57ba04e6d217b4a32a29ccdc4401a519e67c09d081c416"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-sandbox-admission.js",
+      "sha256": "5705c3ade6ccc06fd503e03c7836797f3375b09de09db2885f53800844f83be3"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-sandbox-contract.js",
+      "sha256": "a1f89f18fa238eebe38fad072a4f121bb1c5dd3e8df87dbfb5226eece847b8cb"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/offer-sandbox-transport.js",
+      "sha256": "8ad71258199c0ccfd3db73dbf94db211eb55ee2c69bd33d111fd6359d795ae71"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/same-order-amount-reader.js",
+      "sha256": "cec54545280124c887404506c53345f55fa6f662e26838d8aaf9d7c5907983f2"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/server.js",
+      "sha256": "b1d318bf26abee602dead941d3055f029d6eea220ebbb850e0f9a2acb07a22f4"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/amount-diagnostic-test.js",
+      "sha256": "de55f6bb0acd217056175ed730789ad2830e7fa6951a40e21d06ca493dc1ed3f"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/browser-bridge-test.js",
+      "sha256": "17d12e3e71971db4dee0228e2afb3b3fabf82dee8f86a1db554e666cc0adcfa2"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/email-bound-test.js",
+      "sha256": "0895cbb0717d6b64e14f83aabef6c66d7414ad7adb01d9251f481cb053067eec"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/live-bridge-test.js",
+      "sha256": "c2178fec935e896524c6c0ec04c6970cd9218c47b119272823382176b13180ab"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/live-span-bridge-test.js",
+      "sha256": "e41ef656dc21c6dfd669b437646341b60f7a7ab45b85f78328538581f159961d"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/order-diagnostic-test.js",
+      "sha256": "66f1ad670777e832700ae30d85ddb63792ae04b07e40413a0921520b6eaac274"
+    },
+    {
+      "path": "experiments/email-bound-offer-checkout/tests/same-order-amount-reader-test.js",
+      "sha256": "aa1420d129b8cdcc2d5ae5e7207ef052237548728674ed2070e8f7cc303a79d6"
+    },
+    {
+      "path": "experiments/scope-to-quote/buyer-client.js",
+      "sha256": "56c24579f8a7529419245ef63f6041a37aed6c6c016a92856330d411b0bfe9a2"
+    },
+    {
+      "path": "experiments/scope-to-quote/buyer.html",
+      "sha256": "3068e44782595b4c1fbb5ea988426613b65af0d38dea18796cccbaf78627ca61"
+    },
+    {
+      "path": "experiments/scope-to-quote/client.js",
+      "sha256": "52cd812ce93886f10dc915f98829282430721ea98ab47ce72d9e30fc1cff9fd6"
+    },
+    {
+      "path": "experiments/scope-to-quote/core.js",
+      "sha256": "11cef93def454af9b4b77e77faa2233c0b3f122b78fa03abc9ca82caea65b895"
+    },
+    {
+      "path": "experiments/scope-to-quote/demo.js",
+      "sha256": "bf5f0c60ea1a41a730e36c512518314068d7121e3e63b6e358c4504f814d8cd5"
+    },
+    {
+      "path": "experiments/scope-to-quote/draft-http.js",
+      "sha256": "49f07ca5dafedf2ba3f663eb904ebafb481ea49784c208a83e33d7b54e80f635"
+    },
+    {
+      "path": "experiments/scope-to-quote/draft-protocol.js",
+      "sha256": "4972bb3186bfbd74e9219104aa57561442ae309e85b9219e40d96e15c75cf9de"
+    },
+    {
+      "path": "experiments/scope-to-quote/draft-service.js",
+      "sha256": "f6c0112544ecf3385e511938cd94b567b133e8ce9279cd970dada756788a03bc"
+    },
+    {
+      "path": "experiments/scope-to-quote/fixtures.js",
+      "sha256": "bc21b1cce0c99bda62c96088d86fa012f1669e54ed6e581596790501c488bf30"
+    },
+    {
+      "path": "experiments/scope-to-quote/index.html",
+      "sha256": "213ac628123af940ceefc736bc6276f48e52fd2457f0e5c9ef595c9a87d5ae8d"
+    },
+    {
+      "path": "experiments/scope-to-quote/nebius-draft-transport.js",
+      "sha256": "49db6eaef0f2fa40b80f3ece4954398666a63a6e3612c1769c5c4d5f48d5fb05"
+    },
+    {
+      "path": "experiments/scope-to-quote/nonprice-draft-protocol.js",
+      "sha256": "d149034ecec1c5e73ec42f4ae25755ef13e1c4bcbba3c77d6a8efd9874c2c73c"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-demo-case.js",
+      "sha256": "c168c3ffbfb87832d16b0e5f7219056150244523b218803a20f7a91b765cc01e"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-demo.js",
+      "sha256": "3ba90ccce01e160e96bdc44a87c28fd3c149126631c1ff209469d8f9e0fe23bc"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-draft-service.js",
+      "sha256": "d0f81dbcb275b76f07b288caa3d0d9613c0321b4893d21c80887c38d84a10856"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-key-loader.js",
+      "sha256": "7726945e17a07d3e4470ac45c8064d1dc55b98f8749639c900b53152bba24a9a"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-partial-request.js",
+      "sha256": "86a2d05e87597332a077f1e958dc814e55b539266faa59f8d0222600095d0866"
+    },
+    {
+      "path": "experiments/scope-to-quote/nvidia-span-case.js",
+      "sha256": "af4d38a757a115269dfb7d340dc8375c11b1640a7e0f0275bf690af0b16e3939"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-checkout-client.js",
+      "sha256": "96621efea078da6491d0c35711baaddbe4dc4dbda21841b739c2291ead50e431"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-checkout-http.js",
+      "sha256": "b8f5bc2d66506923779b775c26589ca0b9c010cba89a108ecf6e02f77af74dc2"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-client.js",
+      "sha256": "42136c4c51184128df10ce4d558db8dc76b0186e37f84f241a843d72d47332e0"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-core.js",
+      "sha256": "2e40a76b64fc132abb9b51b68c015a6d060b7354ac6c9e47683cd4d559737db6"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-payment-journal.js",
+      "sha256": "3f86b00f9a912c49adc0ee63f30f62f4b697b43e2cbde87c2cac3031f823d81e"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-payment-record.js",
+      "sha256": "287d04743f1820d2b643ad9e31ab9a366382d0ca25d7c7fedd6487844099973e"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-record-client.js",
+      "sha256": "0841c898271b9478137f633622afcadf1de42059425b5adcd19bed81d3ea7196"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-record-http.js",
+      "sha256": "934433cc9917a8e7816acc3d919b4e3e728c9c16032a0f6355876e811c197065"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-sandbox-admission.js",
+      "sha256": "34f8888ed6e13b03441ee20d0502468d508fc938137c39f042f58e76836e9038"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-sandbox-contract.js",
+      "sha256": "55af2b4ba4d5843068b12a62dafa7a58c519373c1cbf632744bb2ac7cc663d60"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer-sandbox-transport.js",
+      "sha256": "0bc86fd612e17ca24f4890f2530a2ac670861afaec0ad51865e80b0ffe1cf65b"
+    },
+    {
+      "path": "experiments/scope-to-quote/offer.html",
+      "sha256": "5c6a9ff1a931329965d2f44faabe208097419cbc4ba82075e48a7fe41dcb2a17"
+    },
+    {
+      "path": "experiments/scope-to-quote/package.json",
+      "sha256": "97a351f758e3e8b452ec5bb3e0d5c1ce67a66734d153623f000ecae544cb4a39"
+    },
+    {
+      "path": "experiments/scope-to-quote/partial-draft-protocol.js",
+      "sha256": "e316d89ac36101c28e45c620fed89cfc884afc19dc2e5fb62c4c9ba28ec254e5"
+    },
+    {
+      "path": "experiments/scope-to-quote/runtime/nebius-supervisor.py",
+      "sha256": "37eaad9b0f5c67021ddee83dcebf53f106472f95ad19a0a77a1861331dc19b54"
+    },
+    {
+      "path": "experiments/scope-to-quote/runtime/nebius-worker.py",
+      "sha256": "d1e354595c533cf0cdfa068fb8aa26fc660ad9bb1038651d07151607c035fdb9"
+    },
+    {
+      "path": "experiments/scope-to-quote/runtime/preparation.js",
+      "sha256": "12570a240ce9abf2e7d190e8d9edbd097e0e41664089e6022d61a84b5202b133"
+    },
+    {
+      "path": "experiments/scope-to-quote/sandbox-contract.js",
+      "sha256": "335115dd336cbfcb5a57b4977b50c4d4ae16c9878c30c470d8bfb79eccef4fe7"
+    },
+    {
+      "path": "experiments/scope-to-quote/server.js",
+      "sha256": "1791630c58617b14c705bc9589a721bca382a1c0d6488067fb0a5080675c930c"
+    },
+    {
+      "path": "experiments/scope-to-quote/span-draft-protocol.js",
+      "sha256": "0cc5fe5de86df181f21229c438b45284a6932fbe49594bcd36c0fc26d611e984"
+    },
+    {
+      "path": "experiments/scope-to-quote/strict-json.js",
+      "sha256": "1dca567118f3f40d10dc1e86c445f846f8eb7aa956e26c358db35d6332360ec4"
+    },
+    {
+      "path": "experiments/scope-to-quote/style.css",
+      "sha256": "17914cb85fed0895a7d0718dde18d64a3d70bac10dede333baafce008aa1a165"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/buyer-demo-test.js",
+      "sha256": "43c88686c8ed5ed630a76bdbd82c172d54e8a999300f27f2ddabe39e2f8120f3"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/buyer-journey-test.js",
+      "sha256": "e6ae37d5824cdb28aa9ba3b35d5b8575134009112d42c20350248846b1e52e1b"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/buyer-view-test.js",
+      "sha256": "588e17f4f42ae0dcad6111186c67c211b8e5d356b64b34748d3741ad2a13b082"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/client-test.js",
+      "sha256": "288f91757d599b61e7289ba849902fda7dbcbabec7e16dc47c018193576ebb21"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/core-test.js",
+      "sha256": "e72c0d93d8d3b7fbe61eecbbd6c67886c19bd40342d87a90394595d935181668"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/draft-service-test.js",
+      "sha256": "bad36f2ad8a3a0493447c73506c93902e4340bfebb841175418f216c0a16101d"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/exact-review-correction-test.js",
+      "sha256": "189077e7e8182806f4b250bd010e4458bc86ac592bde87b17509f88f93ac7b84"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/field-readiness-test.js",
+      "sha256": "afefbd35f58cc95d56b0f9263d1b95cb613a8b66b9fe08d77455364fa5e386ff"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/first-run-recovery-test.js",
+      "sha256": "6543b3b46110248fea2dfb1cb0636b5927c9925f14349f6b6a1feae4d27633b6"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/inert-checkout-client-test.js",
+      "sha256": "6b26530d40802370245fe680e0c8f476db5d151a5b70d882d9ef56255c38bc8f"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/mode-disclosure-test.js",
+      "sha256": "61a55cf437348afab49268325c4d019dea68afd3bfba8353b2713d5f1ab51917"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/nebius-transport-test.js",
+      "sha256": "f6b4e131af4f6265c6d683584b1084e3eebeb56f2352611720c34631e4208afe"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/nonprice-protocol-test.js",
+      "sha256": "b1e67ce837ae4ddd2c02ba265689971ba505b02ea3b558f6920731bdd3cd4a83"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/nvidia-key-loader-test.js",
+      "sha256": "0d080d7f3ee56016ce5a19d0aca766c6205ea1b2854d80ef2064dc39e2b1e902"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/nvidia-launcher-test.js",
+      "sha256": "7fcf9cc71e500641834402718a3add66d99154c3b7c677c02d5206b354df3b27"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/nvidia-service-test.js",
+      "sha256": "880e900ab1051da759bc6db4f06418014d0cc356f00d1a7391a80faafcf63fe9"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-change-review-test.js",
+      "sha256": "b0e09d9240ad56a4a4afa731e488c68635635582ec90db80ab244bb37e6d3554"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-checkout-bridge-test.js",
+      "sha256": "cfdbc71913d07ce03ae4fa04a10abcdfea279419eb8da7a2924986276a81bb95"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-checkout-journal-test.js",
+      "sha256": "4b7f3ba2ed3d0d797d0304ffbb0fae4a5e4085b06058c43c35f8b66e64fe079a"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-client-test.js",
+      "sha256": "855dd041befb5fe61d5e0dc8fc329d94e58627f87fb075c81e3a6755774704c8"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-flow-test.js",
+      "sha256": "fa0a412811c922d4b1c2ed0732460dd1c7a3fba9c787c9bbfdb4411fad8a8513"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-http-test.js",
+      "sha256": "51ac9c90077fc892f8e18616edc87460312d35d0f1f07e318559b5a671c5083e"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-payment-record-test.js",
+      "sha256": "0be974affef72eb0bdb4e01fea77ebd3ccc99cb0ac9ed1da16516c99c90bb314"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-record-bridge-test.js",
+      "sha256": "121df2585cf3710f5154cb3190fad240e14e5250394a63b51f1a6787372aa23e"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-sandbox-admission-test.js",
+      "sha256": "e36cf0d6cc1655e32c2e7992026a47764627bc139162ede0f353ab762c9335b3"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/offer-sandbox-transport-test.js",
+      "sha256": "9480c901a76e128692e086af9a4a77e77d750f24ab56c583c8ea58048892620f"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/partial-draft-test.js",
+      "sha256": "12d5b4f9dc60e490678042ceb6a930b01f1691838d5067d13b7b4261930cfad5"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/payment-terms-guidance-test.js",
+      "sha256": "90b14e15c2d79465f81c2cbd75e4d126c0bce9abf6e6ff1d80e325ebaa363ac7"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/previous-accepted-quote-test.js",
+      "sha256": "8897095d4c9dfbf6ea726771426f10ea68f39760ae8f1027f086ca7fd1a11cbd"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/revision-request-client-test.js",
+      "sha256": "d2d3c3323eef259d3b6128084b7748bd543e83c960bbf3084aaefba307eb6afa"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/revision-request-record-test.js",
+      "sha256": "806b7d0bfef730a5cb8d44179a7bff3e900e8d22961a5bbb6f3f7b7b84ad30ec"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/revision-text-resume-test.js",
+      "sha256": "590b6cb88793a2599e08c0e89039278b9de6cf9f947b1e67221056521dd92bc9"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/runtime-preparation-test.js",
+      "sha256": "eb5bc30eed276f875d2a875ef0f7688e8404cf12f056f41c38575f51ed5fabdc"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/runtime-span-test.js",
+      "sha256": "21d2fca745acb846c0799ca9d599b1cd2ad1408ac4f2d39149047f4909a4fdca"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/runtime-span-worker-test.py",
+      "sha256": "57996990c2e947a24d0c73279727edcdbb97b2396edfa89956cb4501f2f6e778"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/runtime-worker-test.py",
+      "sha256": "657d511cbca9dd342aa02b9264cf3f55dd8459e903f80cb2428ad43c60f6bb37"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/sandbox-contract-test.js",
+      "sha256": "496dd10108db954ee35910bd86054a90fa9e1e6968ba0e9b90937695ba1be509"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/selective-draft-client-test.js",
+      "sha256": "5a98d7c385186d5774b842087dabae593cd5ab8a2d1adb478341dc4dab474c68"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/selective-draft-core-test.js",
+      "sha256": "8379e49fd1967ad1bfb74a3be1ef0baeb869b5e732d721d5c49826fbe4190432"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/server-test.js",
+      "sha256": "17ac52be7d23953b1aa03c9b2c0f3d4067a86fa925faeb9f3bce733e9e696b56"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/span-draft-test.js",
+      "sha256": "b941eae03fb0013c693721a60767f73e1ba8cc7ccf8cbd237936237810ec79b5"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/text-draft-resume-test.js",
+      "sha256": "8c1d5be885f2b864e7c52fd847f2dcedfb76a2bf37d626038f4b0e3b5f52c1c5"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/text-draft-review-preservation-test.js",
+      "sha256": "b57bccde63ba37d08b7898c882c191a90cd3ea28826d4e62052b9c4e24b32449"
+    },
+    {
+      "path": "experiments/scope-to-quote/tests/unit-amount-response-test.js",
+      "sha256": "19e9cb97eb0f0339c6ebb8b1a090804380203e1d988d9304f84933ece00745ae"
+    },
+    {
+      "path": "photo-sale/enquiry-model.js",
+      "sha256": "d567b077b8b012e73f0e6905b73c9c2f32b4a80780def451066f6bf234c5cd51"
+    },
+    {
+      "path": "photo-sale/enquiry-sandbox-contract.js",
+      "sha256": "e5de7969ccd18775d88ecf003f1e62d9bf31fc79c390d463a8e4f0e1c39237c1"
+    },
+    {
+      "path": "photo-sale/private-json-store.js",
+      "sha256": "55365298037cf43f4c089a78cfe193ec2e9f6d233cf4b8dfdbc4ca43d36ee2db"
+    },
+    {
+      "path": "photo-sale/sandbox-transport.js",
+      "sha256": "981f284278a6030fa145a332b1f798080b3fc61a8dccb4bc97be47acc3776237"
+    },
+    {
+      "path": "tools/browser-tests/hosted-workspaces.spec.js",
+      "sha256": "acd8aefcfd8990431c2e11da693a9bf876238c555fba446f6564f7a1ab91c376"
+    },
+    {
+      "path": "tools/browser-tests/nonprice-review.spec.js",
+      "sha256": "98cfd0a0129e27c3b411e58282b8d6a704dc61cb68c1e1df2a02d9e14fc1a75c"
+    },
+    {
+      "path": "tools/browser-tests/offer-journey.spec.js",
+      "sha256": "0b932c237fa2436274af58d21f03143b4ceaef4a90c2113347dabf0dc734b813"
+    },
+    {
+      "path": "tools/browser-tests/package-lock.json",
+      "sha256": "ee50da1454ce28a11bfaae586306a674dab5236766b3382980d9e67c92716d8e"
+    },
+    {
+      "path": "tools/browser-tests/package.json",
+      "sha256": "0114b49937ca36c30b6a5d326efbdd800b042bf00a4d0782d34c86a47fe260ac"
+    },
+    {
+      "path": "tools/browser-tests/partial-review.spec.js",
+      "sha256": "dd7499cfb60b76ed355a3ffd6a9b6420bb0ae7c079fc44286f90b434c73ba7ad"
+    },
+    {
+      "path": "tools/browser-tests/playwright.config.js",
+      "sha256": "9806fcb44e44dd2e5dd0686a5808978911f3ba8dab8f0e8002ef4a0899925d7f"
+    },
+    {
+      "path": "tools/browser-tests/saved-nvidia-fixture.js",
+      "sha256": "9dc517f08526285e0b32c39ec7eb0ca75e8f3da6718286e96d6d0dec3c452f32"
+    },
+    {
+      "path": "tools/netlify-config-check/config.test.mjs",
+      "sha256": "1583bb1f9a98f4f9a12f801616317044363ce555d35d5f62bafa612b74e4c71e"
+    },
+    {
+      "path": "tools/netlify-config-check/package-lock.json",
+      "sha256": "c59c08f0c0dd8ab3d83a070e62f264fd2136950e354c5e1b709fa8ce569c5a62"
+    },
+    {
+      "path": "tools/netlify-config-check/package.json",
+      "sha256": "500ff7be9238f46792323dbdf1c8c82fc1991b24576ecdc26a33e6c7411b6399"
+    }
+  ],
+  "generatedOrTransformed": {
+    ".github/workflows/current-offer.yml": {
+      "upstreamSha256": "ced581bbaaaea3f890fcdd017a0880f194973786f340f500c3ce15955893fc04",
+      "releaseSha256": "5ed15c875a8a24f5fc12f328c7c43897381d68006bd32ab53e713e1e636b1455"
+    },
+    "README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "b39f2cfe512c6aee387cffc3542caa30f93c4e61a36a6a7a00997d50f8beae83"
+    },
+    "docs/SETUP.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "415189b584de373b47c443d46a93777ff8c4239c4ef6ce604ec04553a8388765"
+    },
+    ".gitleaks.toml": {
+      "upstreamSha256": null,
+      "releaseSha256": "3822b8f3ff705da38a83ce91907cbb9a4555e85a4d6153727605ec0d7d1f6f06"
+    },
+    ".gitignore": {
+      "upstreamSha256": null,
+      "releaseSha256": "202123292e76be86f6cd6c127c8ab7652b465db0c595d8d4da7ba04456d3dd22"
+    },
+    ".gitattributes": {
+      "upstreamSha256": null,
+      "releaseSha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+    },
+    "apps/scope-web/README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "f4486b847663bde9663f16c95300aa2bc414347ccabf2d062c8db8f240201c62"
+    },
+    "experiments/scope-to-quote/README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "781e4a2fa49cf8864afccee6586546b2a9b52c9bccfa0fd8e3e718d6dc3cb6c7"
+    },
+    "experiments/email-bound-offer-checkout/README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "c9305f272ddd8b5017f52d4fc975a13bd791f0d7b4d93fd30d15a47b794bdd76"
+    },
+    "experiments/scope-to-quote/runtime/README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "aec3d3031fd8788e76f3a2019f64e33a214aa03e22c99eaa5cbd74b07c5320c1"
+    },
+    "tools/netlify-config-check/README.md": {
+      "upstreamSha256": null,
+      "releaseSha256": "3dcb563c5c6bc3fe44f6d2e1fa006118702ec91a05db280d6ec32a4770e41713"
+    }
+  },
+  "excluded": "Private handoff/history, provider evidence, runtime data, credentials and repository history. Legacy Markdown is replaced by current setup guidance.",
+  "note": "Initial import integrity record; subsequent commits are independent project development. Not a digital signature or payment evidence."
+}

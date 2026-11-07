@@ -1,0 +1,35 @@
+[build]
+  # Run the CLI from apps/scope-web. Netlify resolves this package as its base;
+  # an explicit monorepo path here would nest it again in an extracted archive.
+  command = "npm run build"
+  publish = "dist"
+  environment = { NODE_VERSION = "24" }
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+[[redirects]]
+  from = "/workspace/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/invitation/*"
+  to = "/index.html"
+  status = 200
+
+# Static responses only. API responses set their own private/no-store headers.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

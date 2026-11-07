@@ -1,0 +1,11 @@
+{
+  "name": "scope-before-payment-browser-checks",
+  "private": true,
+  "scripts": {
+    "test": "playwright test --project=local",
+    "test:hosted": "playwright test --project=hosted"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
+  }
+}

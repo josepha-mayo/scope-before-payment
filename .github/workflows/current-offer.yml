@@ -1,0 +1,144 @@
+name: Current offer app
+on:
+  push:
+    branches: [main, release/scope-public-source-v1]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hosted-storage-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: scope_test
+          POSTGRES_USER: scope_fixture
+          POSTGRES_PASSWORD: owned_ci_fixture_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U scope_fixture -d scope_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Resolve deployment paths offline with the official Netlify resolver
+        working-directory: tools/netlify-config-check
+        run: |
+          npm ci --ignore-scripts
+          npm test
+      - name: Install hosted storage dependencies
+        working-directory: apps/scope-web
+        run: npm ci --ignore-scripts
+      - name: Actual PostgreSQL concurrency, identity isolation and recovery
+        working-directory: apps/scope-web
+        env:
+          SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
+        run: npm test
+      - name: Build production frontend and isolated browser fixture
+        working-directory: apps/scope-web
+        run: |
+          npm run build
+          npm run build:test
+      - name: Install hosted browser checks
+        working-directory: tools/browser-tests
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Hosted UI through actual HTTP and PostgreSQL (authored identity only)
+        working-directory: tools/browser-tests
+        env:
+          SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
+        run: npm run test:hosted
+      - name: Restore owned PostgreSQL data and verify recovery holds
+        working-directory: apps/scope-web
+        env:
+          SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
+          SCOPE_RESTORE_CONTAINER: ${{ job.services.postgres.id }}
+        run: node tools/restore-drill.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: owned-restore-receipt
+          path: apps/scope-web/restore-receipt.json
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hosted-browser-report
+          path: |
+            tools/browser-tests/playwright-report
+            tools/browser-tests/test-results
+          retention-days: 7
+  windows-ai-verification:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Native SQLite and synthetic DPAPI contracts (no provider IO)
+        run: node --test --test-concurrency=1 experiments/scope-to-quote/tests/nvidia-key-loader-test.js experiments/scope-to-quote/tests/nvidia-service-test.js experiments/scope-to-quote/tests/nvidia-launcher-test.js experiments/scope-to-quote/tests/partial-draft-test.js experiments/scope-to-quote/tests/nonprice-protocol-test.js experiments/scope-to-quote/tests/mode-disclosure-test.js experiments/scope-to-quote/tests/first-run-recovery-test.js
+  linux-verification:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify native locking prerequisite
+        run: test -x /usr/bin/flock
+      - name: Current app and shared email variant
+        run: node --test --test-concurrency=1 experiments/scope-to-quote/tests/*test.js experiments/email-bound-offer-checkout/tests/*test.js
+      - name: Python worker contracts (fake IO only)
+        env:
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: |
+          python3 experiments/scope-to-quote/tests/runtime-worker-test.py
+          python3 experiments/scope-to-quote/tests/runtime-span-worker-test.py
+      - name: Install browser test dependencies
+        working-directory: tools/browser-tests
+        run: npm ci
+      - name: Install Chromium
+        working-directory: tools/browser-tests
+        run: npx playwright install --with-deps chromium
+      - name: Native browser complete authored journey
+        working-directory: tools/browser-tests
+        run: npm test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authored-browser-report
+          path: |
+            tools/browser-tests/playwright-report
+            tools/browser-tests/test-results
+          retention-days: 7
+  public-source-secret-scan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch only the checked-out commit ancestry
+        run: |
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --no-tags --unshallow origin "$GITHUB_SHA"
+          fi
+      - name: Verify and run the pinned secret scanner
+        run: |
+          mkdir "$RUNNER_TEMP/scope-gitleaks"
+          curl --fail --location --silent --show-error https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz --output "$RUNNER_TEMP/scope-gitleaks/gitleaks.tar.gz"
+          printf '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  %s\n' "$RUNNER_TEMP/scope-gitleaks/gitleaks.tar.gz" | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/scope-gitleaks/gitleaks.tar.gz" -C "$RUNNER_TEMP/scope-gitleaks"
+          "$RUNNER_TEMP/scope-gitleaks/gitleaks" git --config .gitleaks.toml --log-opts=HEAD --redact --ignore-gitleaks-allow --no-banner --no-color --log-level error .

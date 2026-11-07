@@ -1,0 +1,16 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict'),P=require('../draft-protocol'),S=require('../span-draft-protocol'),N=require('../nonprice-draft-protocol'),C=require('../offer-core'),G=require('../nvidia-span-case');
+function raw(){const ids=S.index(G.source).spans.filter(s=>s.messageId==='M2').map(s=>s.id);return{kind:S.kind,sourceVersion:1,sourceBinding:G.source.binding,fields:{...Object.fromEntries(N.fields.map(k=>[k,{text:'Unverified '+k+' text.',spanIds:ids}])),price:{text:'Unsupported model price',spanIds:ids}},exclusions:{state:'proposed',text:'No physical printing.',spanIds:ids},questions:[]};}
+test('explicit five-field projection leaves the rejected six-field result unchanged and carries no price',()=>{
+ const original=raw(),before=structuredClone(original);assert.throws(()=>S.candidate(original,G.source));const c=N.fromSavedSpanOutput(original,G.source);assert.deepEqual(original,before);assert.equal(Object.hasOwn(c.fields,'price'),false);assert.deepEqual(c.fields.usage,original.fields.usage);assert.equal(Object.isFrozen(c.fields),true);assert.throws(()=>S.candidate(original,G.source));
+});
+test('unknown or changed spans, source, extra fields and malformed non-price fields still reject',()=>{
+ for(const change of [x=>x.sourceBinding='a'.repeat(64),x=>x.sourceVersion=2,x=>x.fields.usage.spanIds=['invented'],x=>x.fields.delivery.text='',x=>x.fields.terms.extra=true,x=>x.extra=true,x=>x.exclusions.spanIds=['wrong'],x=>x.questions=[{field:'price',question:'Price question',spanIds:['wrong']}]]){const x=raw();change(x);assert.throws(()=>N.fromSavedSpanOutput(x,G.source));}
+ const c=structuredClone(N.fromSavedSpanOutput(raw(),G.source));c.fields.price={totalCents:1,currency:'USD',spanIds:raw().fields.price.spanIds};assert.throws(()=>N.candidate(c,G.source));
+});
+test('all original questions remain visible and original full-message context resolves from server source',()=>{
+ const x=raw();x.questions=[{field:'price',question:'Merchant must choose the price.',spanIds:x.fields.price.spanIds}];const c=N.fromSavedSpanOutput(x,G.source),r=N.resolve(c,G.source);assert.equal(r.questions[0].field,'price');assert.equal(r.questions[0].question,x.questions[0].question);assert.equal(r.fields.deliverable.refs[0].context,G.source.messages.find(m=>m.id==='M2').text);assert.equal(Object.hasOwn(r.fields,'price'),false);
+});
+test('core requires exact work/use review, preserves manual price and never grants publication or acceptance',()=>{
+ const s=C.createSession(G.source),candidate=N.fromSavedSpanOutput(raw(),G.source);assert.equal(s.receive({candidate,sourceVersion:1,sourceBinding:G.source.binding},s.ticket()),true);assert.equal(s.view().spanReview.required,true);assert.equal(s.view().canUse,false);s.edit('price','195.00');s.editSpanReview('deliverable','One badger, SVG and PNG.');s.editSpanReview('usage','A3 poster and 400 pastry boxes only. No physical printing.');s.acknowledgeSpanReview(true,s.view().spanReview.key);s.useSelected(['deliverable','usage','delivery','revisions','terms'],s.view().fieldCopy.key);assert.equal(s.view().draft.price,'195.00');assert.equal(s.view().canPublish,false);assert.equal(s.view().canAccept,false);assert.equal(s.view().providerDispatchAuthorized,false);assert.equal(s.view().draft.usage,'A3 poster and 400 pastry boxes only. No physical printing.');
+});
