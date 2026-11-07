@@ -1,6 +1,7 @@
 import { mountCheckout } from './checkout.mjs';
 import { mountAiReview } from './ai-review.mjs';
 import { mountOfferRecord } from './offer-record.mjs';
+import { mountAccountRecord } from './account-record.mjs';
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const privatePath = new RegExp('^/(workspace|invitation)/(' + uuid + ')$');
 const definitions = [ ['deliverable','What you will deliver','textarea'], ['usage','Permitted uses and exclusions','textarea'], ['delivery','Delivery commitment','input'], ['revisions','Revision allowance','input'], ['price','All-in price (USD)','input'], ['terms','Payment timing and other terms','textarea'] ];
@@ -20,7 +21,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   if(!storage)try{storage=globalThis.sessionStorage;}catch{storage={getItem(){throw Error();},setItem(){throw Error();},removeItem(){throw Error();}};}
   const root = doc.getElementById('app'), state = { user:null, epoch:0, generation:0, pending:false, intent:null, workspace:null, confirmed:false, dirty:false, sourceDirty:false, draft:{}, merchantAck:null, buyerAck:null, createdWorkspaceId:null };
   let suppressAuth=1;
-  let ai=null,checkout=null,record=null;
+  let ai=null,checkout=null,record=null,accountRecord=null;
   let renderedPath=location.pathname;
   let view, notice, session, recovery, editor, sourceEditor, quoteBox, conversationBox, invitationBox, publish, accept, discard, merchantCheck, buyerCheck, currentWorkspaceId;
   let changeBox, changeForm, changeNote, changeCheck, changeSubmit, responseCheck, changeAck=null, responseAck=null, withdrawCheck, withdrawSubmit, withdrawAck=null;
@@ -39,7 +40,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const changeKey = () => JSON.stringify([quoteKey(),changeNote?.value]);
   const valid = () => definitions.every(([k]) => typeof state.draft[k]==='string' && state.draft[k].trim() && state.draft[k].length<=1200) && /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price) && Number(state.draft.price)>=0.01 && Number(state.draft.price)<=10000;
   function actions() {
-    ai?.actions();checkout?.actions();record?.actions();
+    ai?.actions();checkout?.actions();record?.actions();accountRecord?.actions();
     if(publish)publish.disabled=blocked()||!state.confirmed||state.sourceDirty||!valid()||state.merchantAck!==key()||!!state.workspace?.openChangeRequest&&responseAck!==state.workspace.openChangeRequest.id;
     if(accept){accept.disabled=blocked()||!state.confirmed||state.dirty||state.sourceDirty||!state.workspace?.sourceCurrent||state.workspace.accepted||!!state.workspace.openChangeRequest||state.buyerAck!==quoteKey();accept.hidden=state.confirmed&&state.workspace?.accepted===true;}
     if(discard)discard.disabled=state.pending||!!state.intent||!state.dirty&&!state.sourceDirty;
@@ -57,9 +58,10 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   recovery=h('aside',undefined,'recovery');recovery.hidden=true;recovery.append(h('p','An earlier action is unconfirmed. Check its status before making another change.'),button('Check saved action',recover));
   view=h('div');main.append(notice,recovery,view);
   const footer=h('footer','Use invented conversations during sandbox qualification. Joining or accepting an offer never requests payment.'),dataUse=h('details');
-  dataUse.append(h('summary','How Scope stores your data'),h('p','Netlify Identity handles sign-in. Scope retains account references, buyer invitation email, saved conversations, published offers, decisions and action history on Netlify. The app limits saved offer reads to workspace members.'),h('p','AI review sends saved conversation excerpts to Anthropic through Netlify only when requested. Scope retains the request and result. The record download excludes AI suggestions, invitation routing and payment history; it is not a complete account export.'),h('p','Automatic deletion and account erasure are not implemented. Replacing a conversation or signing out does not delete its saved history. Use invented conversations while these controls are being qualified.'));
+  dataUse.append(h('summary','How Scope stores your data'),h('p','Netlify Identity handles sign-in. Scope retains account references, buyer invitation email, saved conversations, published offers, decisions and action history on Netlify. The app limits saved offer reads to workspace members.'),h('p','AI review sends saved conversation excerpts to Anthropic through Netlify only when requested. Scope retains the request and result. The short offer record excludes AI suggestions, invitation routing and payment history. The separate account data copy includes older conversations and additional saved history, with credentials and hosting backups excluded.'),h('p','Automatic deletion and account erasure are not implemented. Replacing a conversation or signing out does not delete its saved history. Use invented conversations while these controls are being qualified.'));
   const sourceCode=h('a','Source code (MIT)'),sourceLine=h('p');sourceCode.href='https://github.com/josepha-mayo/scope-before-payment';sourceCode.target='_blank';sourceCode.rel='noopener noreferrer';sourceLine.append(sourceCode);
   footer.append(sourceLine,dataUse);root.append(header,main,footer);
+  accountRecord=mountAccountRecord({parent:footer,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,generation:state.generation,blocked:state.pending||!!state.intent,recovery:state.user?.readOnly===true}),load:async(path,actor)=>{const result=await api(path,undefined,actor);if(path==='me'&&result.id!==actor){retireSession();throw Error('account_changed');}return result;}});
   const check = (text, action) => { const label=h('label',undefined,'check'), input=doc.createElement('input');input.type='checkbox';input.onchange=action;label.append(input,h('span',text));return {label,input}; };
   const markEdit = () => { state.generation++;state.dirty=true;state.merchantAck=null;state.buyerAck=null;responseAck=null;actions(); };
   const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;editor=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
@@ -223,6 +225,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     catch(error){if(e!==state.epoch)return;state.user=null;state.workspace=null;state.intent=null;clearDirty();session.replaceChildren();await showAuth();if(error.status!==401)say(error.message||'The private service is unavailable.');}
   }
   async function showAuth(){
+    accountRecord?.actions();
     clearView();const hero=h('div',undefined,'auth-layout'),intro=h('div');intro.append(h('p','FOR CUSTOM COMMISSIONS','eyebrow'),h('h1','Agree on the work.\nThen ask for payment.'),h('p','One conversation. One precise offer. A separate decision on every revision.','intro'));
     const card=h('section',undefined,'auth-card');card.append(h('h2','Your private workspace'));hero.append(intro,card);view.append(hero);
     let settings;try{settings=await auth.getSettings();}catch{card.append(h('p',offlinePreview?'Sign-in is available on a configured hosted preview. This local view does not create a test identity.':'Sign-in is unavailable. Netlify Identity must be enabled for this hosted preview.'));return;}
@@ -245,5 +248,5 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const unsubscribe=auth.onAuthChange?.(authChanged);
   const pop=()=>{if(state.dirty||state.sourceDirty||state.pending){history.replaceState(null,'',renderedPath);say('Discard unsaved changes or finish the pending action before leaving.');return;}state.epoch++;clearDirty();loadRoute();};globalThis.addEventListener?.('popstate',pop);
   const unload=event=>{if(state.dirty||state.sourceDirty){event.preventDefault();event.returnValue='';}};globalThis.addEventListener?.('beforeunload',unload);
-  return{ready,destroy(){state.epoch++;unsubscribe?.();globalThis.removeEventListener?.('popstate',pop);globalThis.removeEventListener?.('beforeunload',unload);root.replaceChildren();}};
+  return{ready,destroy(){state.epoch++;accountRecord?.dispose();unsubscribe?.();globalThis.removeEventListener?.('popstate',pop);globalThis.removeEventListener?.('beforeunload',unload);root.replaceChildren();}};
 }

@@ -21,6 +21,13 @@ const pool = new pg.Pool({ connectionString: url.href, max: 10, connectionTimeou
 const messages = [{ id: 'B1', role: 'buyer', text: 'Invented request for one heron.' }, { id: 'M1', role: 'merchant', text: 'One digital PNG, own website only, January 12, two rounds, USD87 before work. No resale.' }];
 const fields = { deliverable: 'One heron illustration as a digital PNG.', usage: 'Own website only. No resale.', delivery: 'January 12, 2027', revisions: 'Two rounds.', price: '87.00', terms: 'Single full payment of USD87.00 before work starts.' };
 const code = expected => error => error.code === expected;
+async function accountCopy(store){
+  const manifest=await store.accountRecord(),sections={};
+  for(const start of manifest.pages){sections[start.section]=[];let next=start.cursor;const seen=new Set();
+    while(next){assert.equal(seen.has(next),false);seen.add(next);const page=await store.accountRecordPage(next);assert.equal(page.section,start.section);sections[start.section].push(...page.entries);next=page.next;}
+  }
+  return {manifest,sections};
+}
 test.before(async () => {
   assert.equal((await pool.query("SELECT to_regnamespace('scope_app') AS schema")).rows[0].schema, null, 'Refuse to modify an existing application schema');
   const client = await pool.connect();
@@ -515,6 +522,29 @@ test('source and quote limits preserve all prior records and cannot be reset by 
   for (let i = 0; i < 24; i++) await f.merchant.publish(f.id, publication(f, { expectedRevision: i, sourceVersion: 32, sourceBinding: current.binding }));
   await assert.rejects(f.merchant.publish(f.id, publication(f, { expectedRevision: 24, sourceVersion: 32, sourceBinding: current.binding })), code('workspace_offer_stale'));
   const read = await f.buyer.read(f.id); assert.equal(read.source.version, 32); assert.equal(read.quoteHistory.length, 24); assert.equal(read.accepted, false);
+  const copy=await accountCopy(f.buyer);assert.equal(copy.sections.conversations.length,32);assert.deepEqual(copy.sections.conversations.map(s=>s.version).sort((a,b)=>a-b),Array.from({length:32},(_,i)=>i+1));assert.equal(copy.sections.offers.length,24);assert.equal(copy.sections.conversations.find(s=>s.version===1).binding,f.created.source.binding);assert.equal(copy.sections.activity.length,0);
+});
+
+test('account copies page beyond the dashboard limit and remain isolated from another account and cursor',async()=>{
+  const f=await fixture();for(let i=1;i<100;i++)await f.merchant.create({requestId:randomUUID(),buyerId:randomUUID(),messages});
+  const other=createWorkspaceStore({pool,getPrincipal:async()=>({id:randomUUID()})});
+  await other.create({requestId:randomUUID(),buyerId:f.merchantId,messages});
+  const copy=await accountCopy(f.merchant);assert.equal(copy.sections.workspaces.length,101);assert.equal(copy.sections.conversations.length,101);assert.equal(new Set(copy.sections.workspaces.map(w=>w.workspaceId)).size,101);
+  const foreign=await accountCopy(f.stranger);for(const rows of Object.values(foreign.sections))assert.deepEqual(rows,[]);
+  await assert.rejects(f.stranger.accountRecordPage(copy.manifest.pages[0].cursor),code('session_changed'));
+  for(const token of ['abc',copy.manifest.pages[0].cursor+'=',Buffer.from(JSON.stringify({actor:f.merchantId,section:'paypal_oauth_receipts',after:'',at:new Date().toISOString()})).toString('base64url')])await assert.rejects(f.merchant.accountRecordPage(token),code('account_record_cursor_invalid'));
+});
+
+test('account copies retain actual saved AI and payment history without approval links or another creator’s review',async()=>{
+  const f=await checkoutFixture(),ai=aiFixture(f,{available:()=>true,generate:async()=>({state:'received',raw:aiRaw()})});await ai.requestDraft(f.id,aiInput(f));
+  const store=checkoutStore(f,notificationProvider()),started=await store.startCheckout(f.id,checkoutInput(f));
+  const approved=await store.checkCheckout(f.id,checkInput(started));await store.captureCheckout(f.id,captureInput(approved));
+  const response=await inbox()(signed.request(signed.event({type:'CHECKOUT.ORDER.APPROVED',orderId:started.checkout.orderId})));assert.equal(response.status,200);
+  const owner=await accountCopy(ai),buyer=await accountCopy(store);
+  assert.equal(owner.sections.aiReviews.length,1);assert.equal(owner.sections.aiReviews[0].resultText,aiRaw());assert.equal(buyer.sections.aiReviews.length,0);
+  assert.deepEqual(buyer.sections.paymentHistory[0].calls.map(c=>c.kind),['create','check','capture']);assert.equal(buyer.sections.paymentHistory[0].calls.at(-1).state,'completed');assert.equal(buyer.sections.notifications.length,1);
+  const raw=JSON.stringify(buyer);for(const omitted of ['approval_url','approvalUrl','checkoutnow','token_cipher','credential_id','private-payer','request_json','descriptor'])assert.equal(raw.includes(omitted),false);
+  const again=await accountCopy(store);assert.deepEqual(again.sections,buyer.sections);
 });
 test('storage failures return fixed errors without exposing connection details or SQL', async () => {
   const store = createWorkspaceStore({ pool: { async connect() { throw Error('SECRET_CONNECTION_DETAIL'); } }, getPrincipal: async () => ({ id: randomUUID() }) });
@@ -541,6 +571,17 @@ async function invited() {
   const created = await merchant.create({ requestId: randomUUID(), buyerEmail: 'Buyer@invented.example', messages });
   return { creator, recipient, store, merchant, buyer, created, id: created.workspaceId };
 }
+
+test('account invitations require current verified email or established membership and exclude a reused email’s claimed history',async()=>{
+  const f=await invited(),unverified=f.store({...f.recipient,id:randomUUID(),emailVerified:false});
+  assert.equal((await accountCopy(unverified)).sections.invitations.some(i=>i.workspaceId===f.id),false);
+  assert.equal((await accountCopy(f.buyer)).sections.invitations.some(i=>i.workspaceId===f.id),true);
+  await f.buyer.joinInvitation(f.id,{requestId:randomUUID(),confirmation:'join-this-invited-workspace'});
+  const reused=f.store({...f.recipient,id:randomUUID()}),foreign=await accountCopy(reused);
+  assert.equal(foreign.sections.invitations.some(i=>i.workspaceId===f.id),false);assert.equal(foreign.sections.conversations.some(i=>i.workspaceId===f.id),false);
+  const changedEmail=f.store({...f.recipient,email:'new-address@invented.example',emailVerified:false});
+  assert.equal((await accountCopy(changedEmail)).sections.invitations.some(i=>i.workspaceId===f.id),true);
+});
 test('email invitations allow publication before a designated buyer joins but grant no acceptance', async () => {
   const f = await invited(), q = await f.merchant.publish(f.id, publication(f));
   const before = await f.merchant.read(f.id); assert.equal(before.buyerJoined, false); assert.equal(before.accepted, false); assert.equal(before.quoteHistory[0].accepted, false);

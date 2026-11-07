@@ -9,6 +9,9 @@ const operationRoute = new RegExp('^/api/v1/operations/(' + uuid + ')$');
 const userId = new RegExp('^' + uuid + '$');
 const reject = (code, status) => { throw new WorkspaceError(code, status); };
 function route(path) {
+  if(path==='/api/v1/account-record')return {action:'account-record',methods:['GET']};
+  const exportPage=/^\/api\/v1\/account-record\/([A-Za-z0-9_-]{1,1500})$/.exec(path);
+  if(exportPage)return {action:'account-record-page',id:exportPage[1],methods:['GET']};
   if (path === '/api/v1/me') return { action: 'me', methods: ['GET'] };
   if (path === '/api/v1/workspaces') return { action: 'collection', methods: ['GET', 'POST'] };
   if (path === '/api/v1/invitations') return { action: 'invitations', methods: ['GET'] };
@@ -68,6 +71,8 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
       const store = createWorkspaceStore({ pool: await getPool(), getPrincipal: async () => user, draftProvider, checkoutProvider });
       let result;
       switch (target.action) {
+        case 'account-record': result=await store.accountRecord(); break;
+        case 'account-record-page': result=await store.accountRecordPage(target.id); break;
         case 'collection': result = request.method === 'POST' ? await store.create(input) : await store.list(); break;
         case 'read': result = await store.read(target.id); break;
         case 'source': result = await store.replaceSource(target.id, input); break;
