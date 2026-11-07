@@ -57,7 +57,9 @@ test('the real pinned SDK uses the fixed strong region, automatic native options
   if(init.method==='put'){assert.equal(init.headers['if-none-match'],'*');if(data.has(url.pathname))return new Response(null,{status:412});data.set(url.pathname,init.body);return new Response(null,{status:200,headers:{etag:'owned-etag'}});}
   assert.equal(init.method,'get');return data.has(url.pathname)?new Response(data.get(url.pathname)):new Response(null,{status:404});
  }});
- assert.equal(ledger.available(),true);assert.deepEqual(await ledger.admit(intent()),intent());assert.deepEqual(await ledger.read(id),intent());assert.equal(data.size,1);assert.equal(calls.filter(c=>c.method==='put').length,1);
+ assert.equal(ledger.available(),true);assert.deepEqual(await ledger.admit(intent()),intent());assert.deepEqual(await ledger.admit(intent()),intent());
+ await assert.rejects(ledger.admit({...intent(),claimId:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'}),{code:'erasure_ledger_conflict'});
+ assert.deepEqual(await ledger.read(id),intent());assert.equal(data.size,1);assert.equal(calls.filter(c=>c.method==='put').length,3);
  for(const o of options){assert.equal(o.name,'scope-content-erasure-v1');assert.equal(o.region,'us-east-2');assert.equal(o.consistency,'strong');assert.equal(Object.hasOwn(o,'token'),false);assert.equal(Object.hasOwn(o,'siteID'),false);}
 });
 test('a changed deployment context is rejected again immediately before SDK transport',async()=>{
