@@ -15,6 +15,11 @@ test('account data endpoints retain authentication, same-origin, read-only metho
   await rejected(fixture(),request('account-record',{method:'POST'}),405,'method_not_allowed');
   await rejected(fixture(),request('account-record',{headers:{Origin:'https://foreign.example'}}),403,'request_origin_rejected');
 });
+
+test('collection pagination accepts only one nonempty GET cursor without weakening authentication',async()=>{
+  for(const path of ['workspaces?cursor=start','invitations?cursor=start'])await rejected(fixture(null),request(path),401,'authentication_required');
+  for(const [path,method] of [['workspaces?cursor=','GET'],['invitations?cursor=start&cursor=start','GET'],['workspaces?cursor=start&actor='+id,'GET'],['workspaces?cursor=start','POST']])await rejected(fixture(),request(path,{method}),400,'request_query_invalid');
+});
 test('me exposes only bounded current-user fields, with no token, role authority or database access', async () => {
   const f = fixture({ id, email: 'own@invented.example', name: 'Name', token: 'PRIVATE', roles: ['admin'], emailVerified: true }); const r = await f.handler(request('me'));
   assert.deepEqual((await r.json()).data, { id, email: 'own@invented.example', name: 'Name', emailVerified: true, readOnly:false }); assert.equal(f.pools(), 0);

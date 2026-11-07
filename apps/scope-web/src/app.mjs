@@ -114,10 +114,35 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     clearView();view.append(h('p','YOUR COMMISSIONS','eyebrow'),h('h1','A clear offer starts here.'),h('p','Prepare the scope, invite the buyer, and keep every revision together.','intro'));
     const start=button('New commission',newWorkspace);start.disabled=blocked();view.append(start);
     const e=state.epoch,actor=state.user.id;
-    try{const [workspaces,invitations]=await Promise.all([api('workspaces'),api('invitations')]);if(e!==state.epoch||state.user?.id!==actor)return;
-      if(invitations.length){view.append(h('h2','Invitations for you'));const cards=h('div',undefined,'cards');for(const item of invitations){const card=h('article');card.append(link(item.projectName,'/invitation/'+item.workspaceId),h('p','Review this commission invitation.'));cards.append(card);}view.append(cards);}
-      view.append(h('h2','Your workspaces'));const cards=h('div',undefined,'cards');for(const item of workspaces){const card=h('article');card.append(h('p',item.role==='merchant'?'CREATOR':'BUYER','eyebrow'),link(item.projectName||'Commission','/workspace/'+item.workspaceId),h('p',item.currentRevision?'Offer revision '+item.currentRevision:'Offer not published yet'));cards.append(card);}if(!workspaces.length)cards.append(h('p','Your first commission will appear here.'));view.append(cards);
-    }catch(error){if(e===state.epoch)say(error.message||'Workspaces could not be loaded.');}
+    function collection(kind,label){
+      const invitation=kind==='invitations',panel=h('section'),cards=h('div',undefined,'cards'),status=h('p');
+      status.setAttribute('role','status');status.setAttribute('aria-label',(invitation?'Invitations':'Workspaces')+' list status');
+      let next='start',busy=false,count=0;const seenIds=new Set(),seenPages=new Set();
+      const active=()=>e===state.epoch&&state.user?.id===actor&&panel.isConnected;
+      const more=button('Load more '+kind,load,true);more.hidden=true;
+      panel.append(h('h2',label),cards,more,status);view.append(panel);
+      async function load(){
+        if(!active()||busy||next===null)return;busy=true;more.disabled=true;status.textContent='Loading '+kind+'…';
+        try{
+          const page=await api(kind+'?cursor='+next,undefined,actor);if(!active())return;
+          const current=await api('me',undefined,actor);if(current.id!==actor){retireSession();return;}if(!active())return;
+          if(!page||!Array.isArray(page.items)||page.items.length>25||page.next!==null&&(typeof page.next!=='string'||!/^[A-Za-z0-9_-]{1,900}$/.test(page.next)||seenPages.has(page.next)))throw Error();
+          const ids=new Set(),fragment=doc.createDocumentFragment();
+          for(const item of page.items){
+            if(!new RegExp('^'+uuid+'$').test(item.workspaceId)||seenIds.has(item.workspaceId)||ids.has(item.workspaceId)||!invitation&&!['merchant','buyer'].includes(item.role))throw Error();
+            ids.add(item.workspaceId);const card=h('article');
+            if(!invitation)card.append(h('p',item.role==='merchant'?'CREATOR':'BUYER','eyebrow'));
+            card.append(link(item.projectName||'Commission','/'+(invitation?'invitation':'workspace')+'/'+item.workspaceId),h('p',invitation?'Review this commission invitation.':item.currentRevision?'Offer revision '+item.currentRevision:'Offer not published yet'));fragment.append(card);
+          }
+          cards.append(fragment);for(const id of ids)seenIds.add(id);count+=ids.size;seenPages.add(next);next=page.next;
+          more.textContent='Load more '+kind;more.hidden=next===null;status.textContent=count?'Showing '+count+' '+kind+(next?'. More are available.':'.'):invitation?'No invitations are waiting for this account.':'Your first commission will appear here.';
+          panel.hidden=invitation&&!count&&next===null;
+        }catch(error){if(active()){if(error.status===401||error.code==='session_changed'){retireSession();return;}more.hidden=false;more.textContent='Retry '+(invitation?'invitation':'workspace')+' page';status.textContent='This page could not be loaded. Displayed items are unchanged; try this page again.';}}
+        finally{busy=false;more.disabled=false;}
+      }
+      return load();
+    }
+    await Promise.allSettled([collection('invitations','Invitations for you'),collection('workspaces','Your workspaces')]);
   }
   function newWorkspace(){
     if(blocked())return;clearView();state.createdWorkspaceId=null;const panel=h('section',undefined,'narrow');panel.append(h('p','NEW COMMISSION','eyebrow'),h('h1','Bring the conversation.'),h('p','Use the buyer’s account email. You will get a private link to share; no invitation email is sent.'));

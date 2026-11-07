@@ -4,6 +4,7 @@ import { acquireConnection } from './db-connection.mjs';
 import { createDraftMethods } from './ai-store.mjs';
 import { createCheckoutMethods } from './checkout-store.mjs';
 import { createAccountRecordMethods } from './account-record.mjs';
+import { createCollectionPages } from './collection-pages.mjs';
 import P from '../../../experiments/scope-to-quote/draft-protocol.js';
 import C from '../../../experiments/scope-to-quote/offer-core.js';
 
@@ -117,6 +118,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
   const drafts=createDraftMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider:draftProvider});
   const checkout=createCheckoutMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,checkedQuote,openChange,fingerprintFor,fail,provider:checkoutProvider,timeoutMs:checkoutTimeoutMs});
   return Object.freeze({
+    ...createCollectionPages({transaction,principal,fail}),
     ...createAccountRecordMethods({transaction,principal,fail}),
     readCheckout:checkout.readCheckout,startCheckout:checkout.startCheckout,checkCheckout:checkout.checkCheckout,captureCheckout:checkout.captureCheckout,
     readDraft:drafts.readDraft,
