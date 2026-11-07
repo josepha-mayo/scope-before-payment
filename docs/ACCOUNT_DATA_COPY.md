@@ -25,6 +25,8 @@ authentication or provider authority. Each page has at most 25 records; larger
 histories continue to another page rather than silently disappearing. The
 collector checks identity before and after the collection, detects repeated
 cursors, and saves no partial file on failure, cancellation or account change.
+Pages are paced below the shared API request limit; no failed page or action
+is automatically retried.
 The app does not persist intermediate export contents in browser storage.
 
 The copy is collected over multiple reads. Its timestamps and section read

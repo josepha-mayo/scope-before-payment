@@ -3,7 +3,7 @@ const cursor=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,1500}$/.test(valu
 // No partial file, browser storage, write endpoint, provider call or automatic
 // retry. Each bounded page is serialized once; final account confirmation is
 // required before exposing the complete private copy to a download link.
-export async function collectAccountRecord({actor,load,check,progress=()=>{},recovery=()=>false}){
+export async function collectAccountRecord({actor,load,check,progress=()=>{},recovery=()=>false,pause=()=>new Promise(resolve=>setTimeout(resolve,750))}){
   const read=async path=>{check();const result=await load(path);check();return result;};
   const before=await read('me');if(before.id!==actor)throw Error('account_changed');
   const manifest=await read('account-record');
@@ -14,6 +14,9 @@ export async function collectAccountRecord({actor,load,check,progress=()=>{},rec
     parts.push((index?',':'')+JSON.stringify(start.section)+':[');let next=start.cursor,first=true;const seen=new Set();counts[start.section]=0;
     while(next!==null){
       if(!cursor(next)||seen.has(next))throw Error('account_record_invalid');seen.add(next);
+      // Stay below the shared 120 requests/IP/minute API limit even when pages
+      // are fast. Failure never retries a provider operation or saves a prefix.
+      await pause();check();
       const page=await read('account-record/'+next);
       if(page.section!==start.section||!Array.isArray(page.entries)||page.entries.length>25||!Number.isFinite(Date.parse(page.readAt))||page.next!==null&&!cursor(page.next)||page.next!==null&&!page.entries.length)throw Error('account_record_invalid');
       if(page.entries.length){parts.push((first?'':',')+JSON.stringify(page.entries).slice(1,-1));first=false;}

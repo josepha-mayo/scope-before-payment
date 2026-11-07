@@ -531,7 +531,7 @@ test('account copies page beyond the dashboard limit and remain isolated from an
   await other.create({requestId:randomUUID(),buyerId:f.merchantId,messages});
   const copy=await accountCopy(f.merchant);assert.equal(copy.sections.workspaces.length,101);assert.equal(copy.sections.conversations.length,101);assert.equal(new Set(copy.sections.workspaces.map(w=>w.workspaceId)).size,101);
   const foreign=await accountCopy(f.stranger);for(const rows of Object.values(foreign.sections))assert.deepEqual(rows,[]);
-  await assert.rejects(f.stranger.accountRecordPage(copy.manifest.pages[0].cursor),code('account_record_cursor_invalid'));
+  await assert.rejects(f.stranger.accountRecordPage(copy.manifest.pages[0].cursor),code('session_changed'));
   for(const token of ['abc',copy.manifest.pages[0].cursor+'=',Buffer.from(JSON.stringify({actor:f.merchantId,section:'paypal_oauth_receipts',after:'',at:new Date().toISOString()})).toString('base64url')])await assert.rejects(f.merchant.accountRecordPage(token),code('account_record_cursor_invalid'));
 });
 

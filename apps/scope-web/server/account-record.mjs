@@ -40,8 +40,9 @@ export function createAccountRecordMethods({transaction,principal,fail}){
       try{
         if(typeof token!=='string'||token.length>1500||!/^[A-Za-z0-9_-]+$/.test(token))throw Error();
         cursor=JSON.parse(Buffer.from(token,'base64url').toString('utf8'));
-        if(!exact(cursor,['actor','section','after','at'])||encode(cursor)!==token||cursor.actor!==user.id||!sections.includes(cursor.section)||typeof cursor.after!=='string'||cursor.after.length>512||!/^[A-Za-z0-9:-]*$/.test(cursor.after)||typeof cursor.at!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(cursor.at)||!Number.isFinite(Date.parse(cursor.at))||Date.parse(cursor.at)>Date.now()+5000||Date.parse(cursor.at)<Date.now()-86400000)throw Error();
+        if(!exact(cursor,['actor','section','after','at'])||encode(cursor)!==token||typeof cursor.actor!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(cursor.actor)||!sections.includes(cursor.section)||typeof cursor.after!=='string'||cursor.after.length>512||!/^[A-Za-z0-9:-]*$/.test(cursor.after)||typeof cursor.at!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(cursor.at)||!Number.isFinite(Date.parse(cursor.at))||Date.parse(cursor.at)>Date.now()+5000||Date.parse(cursor.at)<Date.now()-86400000)throw Error();
       }catch{return fail('account_record_cursor_invalid',422);}
+      if(cursor.actor!==user.id)fail('session_changed',409);
       return transaction(async client=>{
         const readAt=(await client.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString();
         const params=[user.id,cursor.after,cursor.at];if(cursor.section==='invitations')params.push(user.email,user.emailVerified);

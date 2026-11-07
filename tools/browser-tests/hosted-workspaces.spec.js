@@ -16,7 +16,7 @@ async function downloadAccount(page){const pending=page.waitForEvent('download')
 test('account data copies download older saved conversations for both members without exporting unsaved edits',async({browser},testInfo)=>{
  const f=await fixture(browser);try{
   const merchant=await f.page('creator'),id=await create(merchant);await fill(merchant);await publish(merchant,1);
-  const saved=await f.app.store('creator').read(id);await f.app.store('creator').replaceSource(id,{requestId:require('node:crypto').randomUUID(),expectedVersion:1,messages:[...saved.source.messages,{id:'B3',role:'buyer',text:'Invented later saved clarification.'}]});
+  const saved=await f.app.store('creator').read(id);await f.app.store('creator').replaceSource(id,{requestId:require('node:crypto').randomUUID(),expectedVersion:1,messages:[...saved.source.messages,{id:'B99',role:'buyer',text:'Invented later saved clarification.'}]});
   const buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review'}).click();
   await merchant.getByLabel('Permitted uses and exclusions',{exact:true}).fill('UNSAVED ACCOUNT DATA must stay in the editor');
   await merchant.getByText('Your account data',{exact:true}).click();const own=await downloadAccount(merchant);expect(own.name).toBe('scope-account-data.json');expect(own.record.sections.conversations.map(s=>s.version).sort()).toEqual([1,2]);expect(own.record.sections.offers).toHaveLength(1);expect(own.record.sections.invitations[0].recipientEmail).toBe('buyer@invented.example');expect(JSON.stringify(own.record)).not.toContain('UNSAVED ACCOUNT DATA');expect(own.record.notice).toContain('not an atomic');
