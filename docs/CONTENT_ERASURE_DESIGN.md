@@ -176,6 +176,9 @@ An authenticated stale POST that reports an already-erased workspace clears
 its old private view and reports that workspace state, without claiming the
 new action completed. The removal navigation opens the disclosure at a visible
 heading below the sticky section controls, including on narrow screens.
+An active write hold disables privacy decisions while leaving metadata status
+refresh and account-download options available. Unconfirmed original actions
+still require their own saved-operation recovery before another decision.
 
 Native platform qualification and protection against pre-erasure restores across older
 deployments and the operator retention decision remain unfinished. No

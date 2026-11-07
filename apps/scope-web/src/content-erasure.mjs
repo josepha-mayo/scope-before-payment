@@ -13,14 +13,14 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
  function checked(value,id){if(!value||value.workspaceId!==id||typeof value.contentErased!=='boolean'||value.request!==null&&(!value.request?.id||!states.has(value.request.state)))throw Error('Removal status could not be verified.');return value;}
  function actions(){
   if(disposed)return;const c=context(),now=stamp(c);if(now!==formStamp){for(const x of controls)x.ack.checked=false;formStamp=now;}
-  refresh.disabled=busy||c.blocked;copy.disabled=busy||c.blocked;
+  refresh.disabled=busy||c.readBlocked;copy.disabled=busy||c.readBlocked;
   const r=view?.request,matched=!r||r.sourceVersion===c.sourceVersion&&r.sourceBinding===c.sourceBinding&&r.revision===c.revision&&r.buyerJoined===c.buyerJoined;
   if(mismatchHelp)mismatchHelp.hidden=matched||['expired','withdrawn'].includes(r?.state);
   for(const x of controls){x.ack.disabled=busy||c.blocked||!c.confirmed||c.dirty||view?.available!==true||!x.allowed()||!['request','withdraw'].includes(x.action)&&!matched;x.submit.disabled=x.ack.disabled||!x.ack.checked;}
  }
  async function perform(action,input){
   const before=context(),own=++run;if(busy||before.blocked||!before.confirmed||before.dirty)return;busy=true;message='Saving your removal decision…';status.textContent=message;actions();
-  try{const result=await send(action,input,before);if(disposed||own!==run)return;if(!same(before))return;if(!result){message='This decision is not confirmed. Use the saved-action check before continuing.';return;}view=checked(result,before.id);onReview(view);if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
+  try{const result=await send(action,input,before);if(disposed||own!==run)return;if(!same(before))return;if(!result){message=context().readBlocked?'This decision is not confirmed. Use the saved-action check before continuing.':'This decision is not confirmed. Refresh removal status before deciding again.';return;}view=checked(result,before.id);onReview(view);if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
   catch(error){if(same(before))message=error.message||'Removal status is unavailable. No action was resent.';}
   finally{if(!disposed&&own===run){busy=false;status.textContent=message;actions();}}
  }
@@ -53,7 +53,7 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
   formStamp=stamp(c);status.textContent=message;actions();
  }
  async function refreshStatus(){
-  const before=context(),own=++run;if(busy||before.blocked)return;busy=true;message='Reading saved removal status…';status.textContent=message;actions();
+  const before=context(),own=++run;if(busy||before.readBlocked)return;busy=true;message='Reading saved removal status…';status.textContent=message;actions();
   try{const result=await load(before);if(!same(before)||own!==run)return;view=checked(result,before.id);onReview(view);if(view.contentErased){onErased(view);return;}message='Saved removal status loaded.';draw();}
   catch(error){if(same(before)){view=null;controls=[];body.replaceChildren();message=error.message||'Removal status is unavailable. No action was sent.';}}
   finally{if(!disposed&&own===run){busy=false;status.textContent=message;actions();}}

@@ -90,6 +90,12 @@ test('changing the authenticated account invalidates an earlier privacy checkbox
  }finally{await f.close();}
 });
 
+test('a recovery write hold permits reading retained removal status while blocking a new decision',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator');await create(page,'Read-only removal history');const panel=await soloRemovalReady(page);f.app.pauseWrites();await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('This decision is not confirmed. Refresh removal status before deciding again.');await expect(panel.getByRole('button',{name:'Refresh removal status',exact:true})).toBeEnabled();await panel.getByRole('button',{name:'Refresh removal status',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('Saved removal status loaded.');await expect(panel.getByLabel(removalLabels.purge,{exact:true})).toBeDisabled();expect(f.app.erasureCounts.purge).toBe(0);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('a recovery hold after final confirmation clears the view without completing or replaying a purge',async({browser})=>{
  const f=await fixture(browser,{erasure:true});try{
   const page=await f.page('creator'),id=await create(page,'Held removal private title'),panel=await soloRemovalReady(page);await page.route('**/api/v1/workspaces/'+id+'/erasure/purge',route=>{f.app.pauseWrites();return route.continue();});await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Held removal private title',exact:true})).toHaveCount(0);expect((await f.app.store('creator').readContentErasure(id)).contentErased).toBe(false);expect(f.app.erasureCounts.purge).toBe(1);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
