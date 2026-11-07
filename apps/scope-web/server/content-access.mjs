@@ -8,8 +8,8 @@ const nulls={workspaces:['projectName'],conversations:['messages'],offers:['fiel
 const project=(value,keys)=>Object.fromEntries(keys.filter(k=>Object.hasOwn(value,k)).map(k=>[k,value[k]]));
 // Database transactions finish before any ledger IO. No negative cache, writes,
 // replacement key, automatic purge or new admission exists in this boundary.
-export function createContentAccessFence({enabled,privacyEnabled,ledger,transaction,principal,runAs,fail,timeoutMs=3000}){
- if(typeof enabled!=='boolean'||typeof privacyEnabled!=='boolean'||privacyEnabled&&!enabled||!Number.isInteger(timeoutMs)||timeoutMs<10||timeoutMs>3000)throw TypeError('content_access_configuration');
+export function createContentAccessFence({enabled,privacyEnabled,ledger,transaction,principal,runAs,fail,snapshot,timeoutMs=3000}){
+ if(typeof enabled!=='boolean'||typeof privacyEnabled!=='boolean'||privacyEnabled&&!enabled||typeof snapshot!=='function'||!Number.isInteger(timeoutMs)||timeoutMs<10||timeoutMs>3000)throw TypeError('content_access_configuration');
  async function observe(ids){
   if(!ids.length)return new Map();
   if(!enabled)return new Map(ids.map(id=>[id,null]));
@@ -74,6 +74,9 @@ export function createContentAccessFence({enabled,privacyEnabled,ledger,transact
  return {
   async fresh(id){if((await observe([id])).get(id)!==null)fail('workspace_erasure_locked',409);},
   wrap(methods){return Object.fromEntries(Object.entries(methods).map(([name,method])=>[name,async(...args)=>{
+   // Capture caller-owned action JSON before authentication or ledger awaits.
+   if(name==='create')args[0]=snapshot(args[0]);
+   else if(privateById.has(name)&&args.length>1||privacyEnabled&&kinds[name])args[1]=snapshot(args[1]);
    const user=await principal();return runAs(user,async()=>{
     const id=privateById.has(name)?args[0]:null,invite=['readInvitation','joinInvitation'].includes(name);
     if(id)await assertOpen(id,user,invite);

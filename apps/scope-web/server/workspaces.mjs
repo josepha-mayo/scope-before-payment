@@ -126,7 +126,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
       return record(client, user, input, id, kind, fingerprint, await action(client, w, user, input));
     });
   }
-  const access=createContentAccessFence({enabled:contentReadFenceEnabled,privacyEnabled:contentErasureEnabled,ledger:erasureLedger,transaction,principal,runAs:(user,action)=>identity.run(user,action),fail});
+  const access=createContentAccessFence({enabled:contentReadFenceEnabled,privacyEnabled:contentErasureEnabled,ledger:erasureLedger,transaction,principal,runAs:(user,action)=>identity.run(user,action),fail,snapshot});
   const drafts=createDraftMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider:draftProvider});
   const checkout=createCheckoutMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,checkedQuote,openChange,fingerprintFor,fail,provider:checkoutProvider,timeoutMs:checkoutTimeoutMs});
   const erasure=createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled:contentErasureEnabled,readFenceEnabled:contentReadFenceEnabled,ledger:erasureLedger,requestTtlMs:erasureRequestTtlMs,canWrite});

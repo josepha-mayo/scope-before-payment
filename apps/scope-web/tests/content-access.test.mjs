@@ -5,7 +5,7 @@ const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',actor='bbbbbbbb-bbbb-4bbb-8bbb-b
 const intent=workspaceId=>({format:'scope-content-erasure-intent/v1',workspaceId,claimId:claim,merchantId:actor,buyerId:null,sourceVersion:1,revision:0,sourceBinding:'a'.repeat(64),admittedAt:'2026-11-07T18:00:00.000Z'});
 function fixture({read=async()=>null,authorized=true,completed=false,localClaim=null,timeoutMs=3000,prior=null}={}){
  let inside=false,calls=0;const user={id:actor,email:'owned@invented.example',emailVerified:true};
- const fence=createContentAccessFence({enabled:true,privacyEnabled:false,timeoutMs,principal:async()=>user,runAs:(_,fn)=>fn(),fail:(code,status=409)=>{throw Object.assign(Error(code),{code,status});},
+ const fence=createContentAccessFence({enabled:true,privacyEnabled:false,timeoutMs,snapshot:structuredClone,principal:async()=>user,runAs:(_,fn)=>fn(),fail:(code,status=409)=>{throw Object.assign(Error(code),{code,status});},
   transaction:async(fn,readonly)=>{assert.equal(readonly,true);inside=true;try{return await fn({query:async(sql,args)=>({rows:sql.includes('FROM scope_app.operations')?(prior?[prior]:[]):authorized?args[0].map(id=>({id,claim_id:localClaim,completed})):[]})});}finally{inside=false;}},
   ledger:{read:async key=>{assert.equal(inside,false,'No ledger IO in a SQL transaction');calls++;return read(key);}}});
  return {fence,calls:()=>calls};
