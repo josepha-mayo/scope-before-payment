@@ -29,6 +29,8 @@ The source dashboard also [pages through workspace and invitation lists](docs/CO
 so memberships beyond the first 100 remain reachable.
 It also provides [read-only revision history and comparisons](docs/REVISION_REVIEW.md)
 before acceptance, including price, use-permission and source-only changes.
+Creators can also [revoke an unused invitation](docs/INVITATION_REVOCATION.md)
+permanently before the buyer joins. This source feature is not yet deployed.
 
 For a portable manual-offer preview, install Node.js 24 and run from this checkout:
 

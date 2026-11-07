@@ -13,6 +13,35 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+test('unused invitation revocation survives a lost reply and removes a stale recipient join without losing creator edits',async({browser},testInfo)=>{
+ const f=await fixture(browser);try{
+  const merchant=await f.page('creator'),id=await create(merchant),path=new URL(await merchant.getByLabel('Private review link').inputValue()).pathname;
+  const buyer=await f.page('buyer',path);await expect(buyer.getByRole('button',{name:'Join this review',exact:true})).toBeEnabled();
+  await merchant.getByLabel('Permitted uses and exclusions',{exact:true}).fill('UNSAVED creator text stays here after revocation.');
+  const revoke=merchant.getByRole('button',{name:'Revoke invitation',exact:true});await expect(revoke).toBeDisabled();
+  let posts=0;merchant.on('request',r=>{if(r.method()==='POST'&&r.url().endsWith('/revoke'))posts++;});
+  f.app.lose('/revoke');await merchant.getByLabel('Permanently revoke this unused invitation.',{exact:true}).check();await revoke.click();
+  await expect(merchant.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(merchant.getByLabel('Private review link')).toBeHidden();
+  await merchant.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(merchant.getByRole('heading',{name:'Invitation revoked',exact:true})).toBeVisible();
+  await expect(merchant.getByLabel('Permitted uses and exclusions',{exact:true})).toHaveValue('UNSAVED creator text stays here after revocation.');await expect(revoke).toHaveCount(0);expect(posts).toBe(1);
+  await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await expect(buyer.getByRole('status',{name:'Workspace status',exact:true})).toContainText('unavailable');
+  expect((await f.app.store('creator').read(id)).buyerJoined).toBe(false);await buyer.reload();await expect(buyer.getByRole('button',{name:'Join this review',exact:true})).toHaveCount(0);
+  await merchant.setViewportSize({width:320,height:844});await testInfo.attach('revoked-invitation-authored',{body:await merchant.locator('.invite').screenshot(),contentType:'image/png'});
+  expect(f.app.counts.publish).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('a creator cannot revoke an invitation after a buyer joins through a separately opened page',async({browser})=>{
+ const f=await fixture(browser);try{
+  const merchant=await f.page('creator'),id=await create(merchant),path=new URL(await merchant.getByLabel('Private review link').inputValue()).pathname;
+  await merchant.getByLabel('Permanently revoke this unused invitation.',{exact:true}).check();
+  const buyer=await f.page('buyer',path);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await expect(buyer.getByRole('heading',{name:'Your decision',exact:true})).toBeVisible();
+  await merchant.getByRole('button',{name:'Revoke invitation',exact:true}).click();await expect(merchant.getByRole('status',{name:'Workspace status',exact:true})).toContainText('already joined');
+  await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.getByRole('heading',{name:'Buyer has joined',exact:true})).toBeVisible();await expect(merchant.getByRole('button',{name:'Revoke invitation',exact:true})).toHaveCount(0);
+  expect((await f.app.store('buyer').read(id)).role).toBe('buyer');expect(f.app.counts.accept).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('unaccepted revisions expose price and permission changes while historical views cannot accept the old offer or replace edits',async({browser},testInfo)=>{
  const f=await fixture(browser);try{
   const merchant=await f.page('creator'),id=await create(merchant);await fill(merchant);await publish(merchant,1);

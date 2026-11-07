@@ -157,11 +157,11 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
         if (rows.length !== w.current_revision || rows.some((row, i) => row.revision !== i + 1 || row.source_version > src.version)) fail('workspace_storage_unconfirmed', 503);
         const history = rows.map(row => ({ ...checkedQuote(row, id), responseTo: row.response_to || null, accepted: !!w.buyer_id && row.accepted_by === w.buyer_id }));
         const current = rows.at(-1), sourceCurrent = !!current && current.source_version === src.version && current.source_binding === src.binding;
-        const invitation = w.merchant_id === user ? (await client.query('SELECT recipient_email,expires_at FROM scope_app.invitations WHERE workspace_id=$1', [id])).rows[0] : null;
+        const invitation = w.merchant_id === user ? (await client.query('SELECT i.recipient_email,i.expires_at,r.created_at AS revoked_at FROM scope_app.invitations i LEFT JOIN scope_app.invitation_revocations r USING(workspace_id) WHERE i.workspace_id=$1', [id])).rows[0] : null;
         const open = change(await openChange(client, id));
         const requests = (await client.query('SELECT r.*,s.response_revision,d.created_at AS withdrawn_at,q.source_version<>b.source_version AS source_changed FROM scope_app.change_requests r LEFT JOIN scope_app.change_responses s ON s.workspace_id=r.workspace_id AND s.request_id=r.id LEFT JOIN scope_app.change_withdrawals d ON d.workspace_id=r.workspace_id AND d.request_id=r.id LEFT JOIN scope_app.quotes q ON q.workspace_id=r.workspace_id AND q.revision=s.response_revision JOIN scope_app.quotes b ON b.workspace_id=r.workspace_id AND b.revision=r.revision WHERE r.workspace_id=$1 ORDER BY r.revision', [id])).rows.map(row => ({ ...change(row), responseRevision: row.response_revision || null, sourceChanged: row.source_changed === true, withdrawnAt: row.withdrawn_at?.toISOString() || null }));
         return { workspaceId: id, projectName: w.project_name, role: w.merchant_id === user ? 'merchant' : 'buyer', source: src, currentQuote: current ? { ...quote(current), responseTo: current.response_to || null } : null, sourceCurrent, accepted: !open && !!w.buyer_id && sourceCurrent && current.accepted_by === w.buyer_id, buyerJoined: !!w.buyer_id, openChangeRequest: open, changeHistory: requests,
-          ...(invitation ? { invitation: { recipientEmail: invitation.recipient_email, expiresAt: invitation.expires_at.toISOString(), path: '/invitation/' + id } } : {}),
+          ...(invitation ? { invitation: { recipientEmail: invitation.recipient_email, expiresAt: invitation.expires_at.toISOString(), revokedAt: invitation.revoked_at?.toISOString() || null, canRevoke: !w.buyer_id && !invitation.revoked_at, path: '/invitation/' + id } } : {}),
           quoteHistory: history };
       }, true);
     },
@@ -232,18 +232,29 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
         return { workspaceId: id, changeRequestId: open.id, withdrawn: true, accepted: false, paymentRequested: false };
       });
     },
+    revokeInvitation(id,input) {
+      return mutate(id,input,['confirmation'],'revoke-invitation','merchant',async(client,w,user,input)=>{
+        if(input.confirmation!=='revoke-this-unused-invitation')fail('workspace_request_invalid',422);
+        const invitation=(await client.query('SELECT i.workspace_id,r.created_at AS revoked_at FROM scope_app.invitations i LEFT JOIN scope_app.invitation_revocations r USING(workspace_id) WHERE i.workspace_id=$1',[id])).rows[0];
+        if(!invitation)fail('workspace_not_found',404);
+        if(w.buyer_id!==null)fail('workspace_invitation_already_joined');
+        if(invitation.revoked_at)fail('workspace_invitation_revoked');
+        await client.query('INSERT INTO scope_app.invitation_revocations(workspace_id,merchant_id) VALUES($1,$2)',[id,user]);
+        return {workspaceId:id,invitationRevoked:true,accepted:false,paymentRequested:false};
+      });
+    },
     async readInvitation(id) {
       if (!uuid(id)) fail('workspace_not_found', 404);
       const current = await principal();
       return transaction(async client => {
-        const row = (await client.query('SELECT w.project_name,w.merchant_id,w.buyer_id,i.recipient_email,i.expires_at,i.expires_at>now() AS active FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id WHERE i.workspace_id=$1', [id])).rows[0];
-        if (!row || row.merchant_id !== current.id && row.buyer_id !== current.id && (!current.emailVerified || current.email !== row.recipient_email || row.buyer_id !== null)) fail('workspace_not_found', 404);
-        return { workspaceId: id, projectName: row.project_name, joined: row.buyer_id === current.id, active: row.active, canJoin: row.active && row.buyer_id === null && current.id !== row.merchant_id && current.emailVerified && current.email === row.recipient_email, expiresAt: row.expires_at.toISOString() };
+        const row = (await client.query('SELECT w.project_name,w.merchant_id,w.buyer_id,i.recipient_email,i.expires_at,r.created_at AS revoked_at,i.expires_at>now() AND r.workspace_id IS NULL AS active FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id LEFT JOIN scope_app.invitation_revocations r USING(workspace_id) WHERE i.workspace_id=$1', [id])).rows[0];
+        if (!row || row.merchant_id !== current.id && row.buyer_id !== current.id && (row.revoked_at || !current.emailVerified || current.email !== row.recipient_email || row.buyer_id !== null)) fail('workspace_not_found', 404);
+        return { workspaceId: id, projectName: row.project_name, joined: row.buyer_id === current.id, revoked: !!row.revoked_at, active: row.active, canJoin: row.active && row.buyer_id === null && current.id !== row.merchant_id && current.emailVerified && current.email === row.recipient_email, expiresAt: row.expires_at.toISOString() };
       }, true);
     },
     async listInvitations() {
       const current = await principal(); if (!current.emailVerified || !current.email) return [];
-      return transaction(async client => (await client.query('SELECT i.workspace_id,w.project_name,i.expires_at FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id WHERE i.recipient_email=$1 AND w.buyer_id IS NULL AND w.merchant_id<>$2 AND i.expires_at>now() ORDER BY i.created_at DESC LIMIT 100', [current.email, current.id])).rows.map(row => ({ workspaceId: row.workspace_id, projectName: row.project_name, expiresAt: row.expires_at.toISOString() })), true);
+      return transaction(async client => (await client.query('SELECT i.workspace_id,w.project_name,i.expires_at FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id WHERE i.recipient_email=$1 AND w.buyer_id IS NULL AND w.merchant_id<>$2 AND i.expires_at>now() AND NOT EXISTS(SELECT 1 FROM scope_app.invitation_revocations r WHERE r.workspace_id=i.workspace_id) ORDER BY i.created_at DESC LIMIT 100', [current.email, current.id])).rows.map(row => ({ workspaceId: row.workspace_id, projectName: row.project_name, expiresAt: row.expires_at.toISOString() })), true);
     },
     async joinInvitation(id, input) {
       if (!uuid(id)) fail('workspace_not_found', 404);
@@ -253,6 +264,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
         await lockActor(client, user);
         const row = (await client.query('SELECT w.*,i.recipient_email,i.expires_at>now() AS active FROM scope_app.workspaces w JOIN scope_app.invitations i ON i.workspace_id=w.id WHERE w.id=$1 FOR UPDATE OF w', [id])).rows[0];
         if (!row || row.merchant_id === user || row.buyer_id !== user && (!current.emailVerified || current.email !== row.recipient_email || row.buyer_id !== null)) fail('workspace_not_found', 404);
+        if((await client.query('SELECT 1 FROM scope_app.invitation_revocations WHERE workspace_id=$1',[id])).rowCount)fail('workspace_not_found',404);
         const saved = await previous(client, user, input.requestId, fingerprint); if (saved) return saved;
         if (input.confirmation !== 'join-this-invited-workspace') fail('workspace_request_invalid', 422);
         if (!row.active) fail('workspace_invitation_expired', 410);
