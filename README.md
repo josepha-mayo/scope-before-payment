@@ -22,6 +22,10 @@ invented conversations. Identity, PostgreSQL persistence and Claude review are
 integrated. Hosted PayPal checkout is currently inactive; a real hosted sandbox
 capture and registered webhook delivery have not been demonstrated.
 
+The source also includes a private [account data copy](docs/ACCOUNT_DATA_COPY.md)
+with older saved conversations and paginated history. That addition is not yet
+deployed: the hosted release remains at `4de65f7` while credits are conserved.
+
 For a portable manual-offer preview, install Node.js 24 and run from this checkout:
 
 ```sh

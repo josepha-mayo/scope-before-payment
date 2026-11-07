@@ -24,6 +24,7 @@ test('account data copies download older saved conversations for both members wi
   await buyer.getByText('Your account data',{exact:true}).click();f.app.pauseWrites();const other=await downloadAccount(buyer);expect(other.record.sections.conversations).toHaveLength(2);expect(other.record.sections.aiReviews).toEqual([]);expect(other.record.recoveryReadOnly).toBe(true);expect(other.record.recoveryNotice).toContain('later activity');
   expect(f.app.counts.publish).toBe(1);expect(f.app.counts.accept).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
   await testInfo.attach('account-data-authored',{body:JSON.stringify(own.record,null,2),contentType:'application/json'});
+  await testInfo.attach('account-data-download-ui',{body:await merchant.locator('footer').screenshot(),contentType:'image/png'});
  }finally{await f.close();}
 });
 

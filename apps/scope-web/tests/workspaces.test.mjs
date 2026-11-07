@@ -571,6 +571,17 @@ async function invited() {
   const created = await merchant.create({ requestId: randomUUID(), buyerEmail: 'Buyer@invented.example', messages });
   return { creator, recipient, store, merchant, buyer, created, id: created.workspaceId };
 }
+
+test('account invitations require current verified email or established membership and exclude a reused email’s claimed history',async()=>{
+  const f=await invited(),unverified=f.store({...f.recipient,id:randomUUID(),emailVerified:false});
+  assert.equal((await accountCopy(unverified)).sections.invitations.some(i=>i.workspaceId===f.id),false);
+  assert.equal((await accountCopy(f.buyer)).sections.invitations.some(i=>i.workspaceId===f.id),true);
+  await f.buyer.joinInvitation(f.id,{requestId:randomUUID(),confirmation:'join-this-invited-workspace'});
+  const reused=f.store({...f.recipient,id:randomUUID()}),foreign=await accountCopy(reused);
+  assert.equal(foreign.sections.invitations.some(i=>i.workspaceId===f.id),false);assert.equal(foreign.sections.conversations.some(i=>i.workspaceId===f.id),false);
+  const changedEmail=f.store({...f.recipient,email:'new-address@invented.example',emailVerified:false});
+  assert.equal((await accountCopy(changedEmail)).sections.invitations.some(i=>i.workspaceId===f.id),true);
+});
 test('email invitations allow publication before a designated buyer joins but grant no acceptance', async () => {
   const f = await invited(), q = await f.merchant.publish(f.id, publication(f));
   const before = await f.merchant.read(f.id); assert.equal(before.buyerJoined, false); assert.equal(before.accepted, false); assert.equal(before.quoteHistory[0].accepted, false);
