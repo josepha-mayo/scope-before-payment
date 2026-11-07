@@ -124,7 +124,10 @@ Already-issued account-copy cursors read the redacted payload values rather
 than an earlier content snapshot. Operation status returns minimal retained
 metadata; replay of a redacted create response cannot create a second workspace.
 An old AI source claim continues to block fresh authority in another workspace.
-These are current-database protections, not erased-content restore protection.
+These are current-row protections, not erased-content restore protection.
+Null redaction does not physically wipe PostgreSQL MVCC tuples, WAL or managed
+backups, recall already-sent responses or delete copies users downloaded.
+Those retention boundaries require separate platform/operator qualification.
 
 The owned restore drill checks both unpurged admission state and already-purged
 fixtures. Restoring a post-purge snapshot preserves absent payloads, denied

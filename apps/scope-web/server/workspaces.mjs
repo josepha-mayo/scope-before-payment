@@ -84,7 +84,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
   }
   async function workspace(client, user, id, lock = false,allowErasureDecision=false) {
     if (!uuid(id)) fail('workspace_not_found', 404);
-    const { rows } = await client.query('SELECT w.*,EXISTS(SELECT 1 FROM scope_app.content_erasure_completions e WHERE e.workspace_id=w.id) AS content_erased FROM scope_app.workspaces w WHERE id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE OF w' : ''), [id, user]);
+    const { rows } = await client.query('SELECT w.*,e.claim_id IS NOT NULL AS content_erased,e.created_at AS content_erased_at FROM scope_app.workspaces w LEFT JOIN scope_app.content_erasure_completions e ON e.workspace_id=w.id WHERE w.id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE OF w' : ''), [id, user]);
     if (!rows[0]) fail('workspace_not_found', 404);
     if(rows[0].content_erased&&!allowErasureDecision)fail('workspace_content_erased',410);
     if(lock&&!allowErasureDecision&&(await client.query('SELECT scope_app.content_erasure_paused($1) AS paused',[id])).rows[0].paused)fail('workspace_erasure_pending');

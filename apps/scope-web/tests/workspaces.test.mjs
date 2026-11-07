@@ -815,8 +815,15 @@ test('erasure retains AI source authority across a new workspace and rejects una
  await assert.rejects(pool.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages) VALUES($1,2,$2,NULL)',[copy.id,'a'.repeat(64)]),code('23514'));
 });
 
+test('recovery of an earlier withdrawn request still reports a later workspace erasure',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),request=await erasureRequest(merchant,f.id),old=await merchant.requestContentErasure(f.id,request),withdrawal=erasureWithdraw(old.request.id);await merchant.withdrawContentErasure(f.id,withdrawal);
+ const privacy=await admittedErasure(f,l.ledger),done=await privacy.merchant.purgeContentErasure(f.id,erasurePurge(privacy.admitted));
+ for(const requestId of [request.requestId,withdrawal.requestId]){const status=await merchant.operationStatus(requestId);assert.equal(status.request.state,'withdrawn');assert.equal(status.contentErased,true);assert.equal(status.erasedAt,done.erasedAt);}
+});
+
 test('content erasure admission is disabled by default and exposes no HTTP route',async()=>{
  const f=await fixture();await assert.rejects(f.merchant.readContentErasure(f.id),code('workspace_erasure_unavailable'));await assert.rejects(f.merchant.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
+ await assert.rejects(f.merchant.purgeContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
  let pools=0;const handler=createApiHandler({getUser:async()=>({id:f.merchantId}),getPool:()=>{pools++;return pool;}});const r=await handler(new Request('https://scope.example/api/v1/workspaces/'+f.id+'/erasure'));assert.equal(r.status,404);assert.equal(pools,0);
 });
 test('erasure review pauses ordinary API-store and direct SQL writes while preserving saved reads and account copies',async()=>{
