@@ -11,6 +11,31 @@ async function changes(page){await page.getByLabel('Changes you need before acce
 
 async function downloadRecord(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download saved record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
+async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
+
+test('account data copies download older saved conversations for both members without exporting unsaved edits',async({browser},testInfo)=>{
+ const f=await fixture(browser);try{
+  const merchant=await f.page('creator'),id=await create(merchant);await fill(merchant);await publish(merchant,1);
+  const saved=await f.app.store('creator').read(id);await f.app.store('creator').replaceSource(id,{requestId:require('node:crypto').randomUUID(),expectedVersion:1,messages:[...saved.source.messages,{id:'B3',role:'buyer',text:'Invented later saved clarification.'}]});
+  const buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review'}).click();
+  await merchant.getByLabel('Permitted uses and exclusions',{exact:true}).fill('UNSAVED ACCOUNT DATA must stay in the editor');
+  await merchant.getByText('Your account data',{exact:true}).click();const own=await downloadAccount(merchant);expect(own.name).toBe('scope-account-data.json');expect(own.record.sections.conversations.map(s=>s.version).sort()).toEqual([1,2]);expect(own.record.sections.offers).toHaveLength(1);expect(own.record.sections.invitations[0].recipientEmail).toBe('buyer@invented.example');expect(JSON.stringify(own.record)).not.toContain('UNSAVED ACCOUNT DATA');expect(own.record.notice).toContain('not an atomic');
+  await expect(merchant.getByLabel('Permitted uses and exclusions',{exact:true})).toHaveValue('UNSAVED ACCOUNT DATA must stay in the editor');
+  await buyer.getByText('Your account data',{exact:true}).click();f.app.pauseWrites();const other=await downloadAccount(buyer);expect(other.record.sections.conversations).toHaveLength(2);expect(other.record.sections.aiReviews).toEqual([]);expect(other.record.recoveryReadOnly).toBe(true);expect(other.record.recoveryNotice).toContain('later activity');
+  expect(f.app.counts.publish).toBe(1);expect(f.app.counts.accept).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
+  await testInfo.attach('account-data-authored',{body:JSON.stringify(own.record,null,2),contentType:'application/json'});
+ }finally{await f.close();}
+});
+
+test('failed, cancelled and account-switched exports never download a partial private copy',async({browser})=>{
+ const f=await fixture(browser);try{
+  const page=await f.page('creator');await create(page);await page.getByText('Your account data',{exact:true}).click();let downloads=0;page.on('download',()=>downloads++);
+  await page.route('**/api/v1/account-record/*',route=>route.fulfill({status:503,contentType:'application/json',body:'{"error":{"code":"service_unavailable"}}'}));
+  await page.getByRole('button',{name:'Download account data',exact:true}).click();await expect(page.getByLabel('Account data download status',{exact:true})).toContainText('No partial file was downloaded');expect(downloads).toBe(0);await page.unroute('**/api/v1/account-record/*');
+  const cancelled=f.app.hold('/api/v1/account-record',{method:'GET'});await page.getByRole('button',{name:'Download account data',exact:true}).click();await cancelled.started;await page.getByRole('button',{name:'Cancel account download',exact:true}).click();cancelled.release();await expect(page.getByLabel('Account data download status',{exact:true})).toContainText('cancelled');expect(downloads).toBe(0);
+  const switched=f.app.hold('/api/v1/account-record',{method:'GET'});await page.getByRole('button',{name:'Download account data',exact:true}).click();await switched.started;await page.context().addCookies([{name:'scope_fixture_actor',value:'buyer',url:f.app.origin}]);switched.release();await expect(page.getByRole('heading',{name:'Workspace unavailable'})).toBeVisible();expect(downloads).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
 
 test('recovery mode keeps private reads and downloads available while direct and visible writes are held',async({browser},testInfo)=>{
  const f=await fixture(browser,{checkout:true});try{

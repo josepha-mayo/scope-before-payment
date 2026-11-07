@@ -9,6 +9,12 @@ async function rejected(f, req, status, code) { const response = await f.handler
 test('anonymous and malformed identities cannot reach database code or use a supplied role header', async () => {
   for (const user of [null, { id: 'forged' }]) { const f = fixture(user); await rejected(f, request('workspaces', { headers: { 'X-User-Id': id, 'X-Role': 'merchant' } }), 401, 'authentication_required'); }
 });
+
+test('account data endpoints retain authentication, same-origin, read-only method and no-store boundaries',async()=>{
+  for(const path of ['account-record','account-record/abc'])await rejected(fixture(null),request(path),401,'authentication_required');
+  await rejected(fixture(),request('account-record',{method:'POST'}),405,'method_not_allowed');
+  await rejected(fixture(),request('account-record',{headers:{Origin:'https://foreign.example'}}),403,'request_origin_rejected');
+});
 test('me exposes only bounded current-user fields, with no token, role authority or database access', async () => {
   const f = fixture({ id, email: 'own@invented.example', name: 'Name', token: 'PRIVATE', roles: ['admin'], emailVerified: true }); const r = await f.handler(request('me'));
   assert.deepEqual((await r.json()).data, { id, email: 'own@invented.example', name: 'Name', emailVerified: true, readOnly:false }); assert.equal(f.pools(), 0);

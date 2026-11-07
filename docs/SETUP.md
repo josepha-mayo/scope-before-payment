@@ -123,6 +123,10 @@ The app discloses what it stores in its footer. Editing and logout do not erase
 immutable history. Automatic retention/deletion and erasure remain unfinished.
 Do not use real customer data while those controls remain unqualified.
 
+The source includes a paginated [account data copy](ACCOUNT_DATA_COPY.md) with
+older saved conversations and allowlisted history. It is distinct from the short
+offer record and is not yet deployed while the shared credit budget is low.
+
 For incident recovery, a reviewed release can compile `recoveryReadOnly=true`
 in `server/recovery-release.mjs`. This fences writes independently of restored
 PostgreSQL state. Verify the held deployment and drain older invocations before
