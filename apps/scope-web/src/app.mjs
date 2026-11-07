@@ -278,9 +278,26 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     }catch(error){if(e===state.epoch)view.append(h('h1','Invitation unavailable'),h('p',error.message||'Sign in with the intended buyer’s account.'));}
   }
   async function loadRoute(){if(!state.user)return;renderedPath=location.pathname;const match=privatePath.exec(location.pathname);if(match)await(match[1]==='workspace'?openWorkspace(match[2]):invitation(match[2]));else await dashboard();actions();}
+  async function signOut(){
+    if(state.dirty||state.sourceDirty||state.pending)return;
+    const e=++state.epoch;suppressAuth++;state.pending=true;
+    state.user=null;state.workspace=null;state.intent=null;state.confirmed=false;
+    state.callback=null;state.draft={};state.createdWorkspaceId=null;currentWorkspaceId=null;
+    clearDirty();clearView();session.replaceChildren();say('');
+    view.append(h('p','Signing out…'));actions();
+    // Keep durable action references for their original account. Clearing this
+    // screen must neither forget an unknown operation nor replay it later.
+    try{
+      await auth.logout();if(e!==state.epoch)return;
+      await showAuth();say('Signed out. Saved action references remain for the original account.');
+    }catch{
+      if(e!==state.epoch)return;
+      view.replaceChildren(h('h1','Sign-out could not be confirmed.'),h('p','This private screen has been cleared, but your session may still be active. Retry sign-out before signing in again.'),button('Retry sign out',signOut));
+    }finally{state.pending=false;suppressAuth--;actions();}
+  }
   async function loadSession(){
     const e=++state.epoch;state.merchantAck=null;state.buyerAck=null;state.workspace=null;state.confirmed=false;state.user=null;state.intent=null;clearView();session.replaceChildren();
-    try{const user=await api('me',undefined,null);if(e!==state.epoch)return;state.user=user;state.intent=readIntent(user.id);clearDirty();session.replaceChildren(h('span',user.email||'Signed in'),button('Sign out',async()=>{if(state.dirty||state.sourceDirty||state.pending)return;suppressAuth++;try{await auth.logout();state.epoch++;state.user=null;state.callback=null;clearDirty();clearView();await showAuth();}finally{suppressAuth--;}},true));await loadRoute();if(user.readOnly)say('Changes are temporarily paused. Saved records and previous-action checks remain available. Refresh this page after maintenance.');}
+    try{const user=await api('me',undefined,null);if(e!==state.epoch)return;state.user=user;state.intent=readIntent(user.id);clearDirty();session.replaceChildren(h('span',user.email||'Signed in'),button('Sign out',signOut,true));await loadRoute();if(e!==state.epoch||state.user?.id!==user.id)return;if(user.readOnly)say('Changes are temporarily paused. Saved records and previous-action checks remain available. Refresh this page after maintenance.');}
     catch(error){if(e!==state.epoch)return;state.user=null;state.workspace=null;state.intent=null;clearDirty();session.replaceChildren();await showAuth();if(error.status!==401)say(error.message||'The private service is unavailable.');}
   }
   async function showAuth(){
