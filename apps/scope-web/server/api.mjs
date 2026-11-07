@@ -4,7 +4,7 @@ import J from '../../../experiments/scope-to-quote/strict-json.js';
 
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const workspaceRoute = new RegExp('^/api/v1/workspaces/(' + uuid + ')(?:/(source|publish|accept|request-changes|withdraw-changes|draft|checkout|checkout/check|checkout/capture))?$');
-const invitationRoute = new RegExp('^/api/v1/invitations/(' + uuid + ')(?:/(join))?$');
+const invitationRoute = new RegExp('^/api/v1/invitations/(' + uuid + ')(?:/(join|revoke))?$');
 const operationRoute = new RegExp('^/api/v1/operations/(' + uuid + ')$');
 const userId = new RegExp('^' + uuid + '$');
 const reject = (code, status) => { throw new WorkspaceError(code, status); };
@@ -91,6 +91,7 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
         case 'invitation': result = await store.readInvitation(target.id); break;
         case 'invitations': result = pageCursor===null?await store.listInvitations():await store.invitationPage(pageCursor); break;
         case 'join': result = await store.joinInvitation(target.id, input); break;
+        case 'revoke': result = await store.revokeInvitation(target.id, input); break;
         case 'operation': result = await store.operationStatus(target.id); break;
         default: reject('route_not_found', 404);
       }

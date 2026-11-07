@@ -74,7 +74,7 @@ The app needs Netlify Identity and Netlify Database. Enable Identity and a login
 provider; email invitations require confirmed email ownership with autoconfirm
 disabled. A buyer must have a distinct signed-in account with the intended
 verified email. The creator copies the private review link manually; workspace
-creation does not send invitation email. Database changes are the ten committed
+creation does not send invitation email. Database changes are the eleven committed
 additive migrations under `apps/scope-web/netlify/database/migrations`; apply
 them through Netlify's native deploy, rather than manual production SQL.
 

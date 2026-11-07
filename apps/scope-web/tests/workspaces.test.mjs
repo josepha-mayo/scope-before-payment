@@ -49,6 +49,69 @@ const publication = (f, extra = {}) => ({ requestId: randomUUID(), expectedRevis
 const acceptance = q => ({ requestId: randomUUID(), revision: q.revision, quoteBinding: q.binding, confirmation: 'accept-exact-published-offer' });
 const changeRequest = (q, extra={}) => ({requestId:randomUUID(),revision:q.revision,quoteBinding:q.binding,note:'Please allow three rounds at the same total.',confirmation:'request-changes-to-this-offer',...extra});
 
+async function invitedFixture(){
+  const merchantId=randomUUID(),buyerId=randomUUID(),strangerId=randomUUID();
+  const principals=Object.fromEntries([[merchantId,'creator'],[buyerId,'buyer'],[strangerId,'stranger']].map(([id,name])=>[id,{id,email:name+'@invented.example',emailVerified:true,confirmedAt:'2026-11-07T00:00:00Z'}]));
+  const store=id=>createWorkspaceStore({pool,getPrincipal:async()=>principals[id]});
+  const merchant=store(merchantId),buyer=store(buyerId),stranger=store(strangerId);
+  const created=await merchant.create({requestId:randomUUID(),buyerEmail:principals[buyerId].email,messages});
+  return {merchantId,buyerId,strangerId,merchant,buyer,stranger,principals,created,id:created.workspaceId};
+}
+const revocation=()=>({requestId:randomUUID(),confirmation:'revoke-this-unused-invitation'});
+const joining=()=>({requestId:randomUUID(),confirmation:'join-this-invited-workspace'});
+
+test('revoking an unused invitation removes every recipient read/join path and preserves immutable creator history',async()=>{
+  const f=await invitedFixture();const q=(await f.merchant.publish(f.id,publication(f))).quote;
+  assert.equal((await f.buyer.readInvitation(f.id)).canJoin,true);
+  await assert.rejects(f.buyer.revokeInvitation(f.id,revocation()),code('workspace_not_found'));
+  await assert.rejects(f.stranger.revokeInvitation(f.id,revocation()),code('workspace_not_found'));
+  await assert.rejects(f.merchant.revokeInvitation(f.id,{...revocation(),confirmation:'wrong'}),code('workspace_request_invalid'));
+  const input=revocation(),saved=await f.merchant.revokeInvitation(f.id,input);
+  assert.equal(saved.invitationRevoked,true);assert.deepEqual(await f.merchant.revokeInvitation(f.id,input),saved);
+  assert.deepEqual(await f.merchant.operationStatus(input.requestId),saved);
+  await assert.rejects(f.merchant.revokeInvitation(f.id,revocation()),code('workspace_invitation_revoked'));
+  await assert.rejects(f.buyer.readInvitation(f.id),code('workspace_not_found'));
+  await assert.rejects(f.buyer.joinInvitation(f.id,joining()),code('workspace_not_found'));
+  await assert.rejects(f.buyer.read(f.id),code('workspace_not_found'));
+  assert.equal((await f.buyer.listInvitations()).some(i=>i.workspaceId===f.id),false);
+  assert.equal((await collectionItems(f.buyer,'invitationPage')).some(i=>i.workspaceId===f.id),false);
+  assert.equal((await accountCopy(f.buyer)).sections.invitations.some(i=>i.workspaceId===f.id),false);
+  const own=await f.merchant.read(f.id);assert.ok(own.invitation.revokedAt);assert.equal(own.invitation.canRevoke,false);assert.equal(own.buyerJoined,false);assert.equal(own.currentQuote.binding,q.binding);
+  assert.ok((await accountCopy(f.merchant)).sections.invitations.find(i=>i.workspaceId===f.id).revokedAt);
+  await assert.rejects(pool.query('UPDATE scope_app.invitation_revocations SET merchant_id=merchant_id WHERE workspace_id=$1',[f.id]),code('23514'));
+  await assert.rejects(pool.query('DELETE FROM scope_app.invitation_revocations WHERE workspace_id=$1',[f.id]),code('23514'));
+  await assert.rejects(pool.query('UPDATE scope_app.workspaces SET buyer_id=$2 WHERE id=$1',[f.id,f.buyerId]),e=>e.code==='23514'&&e.message==='scope_invitation_is_revoked');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.workspaces WHERE merchant_id=$1',[f.merchantId])).rows[0].n,1);
+});
+
+test('a joined buyer and accepted offer cannot be revoked by the creator or direct database insertion',async()=>{
+  const f=await invitedFixture();await f.buyer.joinInvitation(f.id,joining());
+  const q=(await f.merchant.publish(f.id,publication(f))).quote;await f.buyer.accept(f.id,acceptance(q));
+  await assert.rejects(f.merchant.revokeInvitation(f.id,revocation()),code('workspace_invitation_already_joined'));
+  await assert.rejects(pool.query('INSERT INTO scope_app.invitation_revocations(workspace_id,merchant_id) VALUES($1,$2)',[f.id,f.merchantId]),e=>e.code==='23514'&&e.message==='scope_invitation_revocation_invalid');
+  assert.equal((await f.buyer.read(f.id)).accepted,true);assert.equal((await f.merchant.read(f.id)).invitation.canRevoke,false);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.invitation_revocations WHERE workspace_id=$1',[f.id])).rows[0].n,0);
+});
+
+test('simultaneous join and revocation serialize to exactly one outcome with no buyer in a revoked workspace',async()=>{
+  for(let i=0;i<6;i++){
+    const f=await invitedFixture(),calls=i%2?[()=>f.buyer.joinInvitation(f.id,joining()),()=>f.merchant.revokeInvitation(f.id,revocation())]:[()=>f.merchant.revokeInvitation(f.id,revocation()),()=>f.buyer.joinInvitation(f.id,joining())];
+    const results=await Promise.allSettled(calls.map(call=>call()));assert.equal(results.filter(r=>r.status==='fulfilled').length,1);
+    const w=await f.merchant.read(f.id);assert.notEqual(w.buyerJoined,!!w.invitation.revokedAt);
+    if(w.buyerJoined)assert.equal((await f.buyer.read(f.id)).role,'buyer');else await assert.rejects(f.buyer.readInvitation(f.id),code('workspace_not_found'));
+  }
+});
+
+test('revocation endpoint requires explicit current creator action and respects the independent recovery hold',async()=>{
+  const f=await invitedFixture(),input=revocation(),url='https://scope.example/api/v1/invitations/'+f.id+'/revoke';let held=true;
+  const handler=createApiHandler({getUser:async()=>f.principals[f.merchantId],getPool:()=>pool,canWrite:()=>!held});
+  const request=extra=>new Request(url,{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://scope.example','X-Scope-Action':'explicit-user-action','X-Scope-Session':f.merchantId,...extra},body:JSON.stringify(input)});
+  assert.equal((await handler(request())).status,503);assert.equal((await f.merchant.read(f.id)).invitation.revokedAt,null);
+  held=false;assert.equal((await handler(request({'X-Scope-Session':f.buyerId}))).status,409);
+  assert.equal((await handler(new Request(url))).status,405);
+  const result=await handler(request());assert.equal(result.status,200);assert.equal((await result.json()).data.invitationRevoked,true);
+});
+
 function checkoutProvider(overrides={}) {
   return {available:()=>true,context:()=>({profile:'authored-checkout-fixture-v1',merchantId:'Y53RSV36EJCGG',payerId:'ABCD23456789E',origin:'https://scope-before-payment.netlify.app'}),
     create:async({attempt,authorize})=>{assert.equal(authorize(),true);return {status:201,body:inventedOrder(attempt)};},
