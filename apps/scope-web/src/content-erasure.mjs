@@ -2,13 +2,13 @@ const states=new Set(['awaiting_consent','ready_to_admit','withdrawn','expired',
 const stamp=c=>JSON.stringify([c.user,c.epoch,c.id,c.generation,c.sourceVersion,c.sourceBinding,c.revision,c.buyerJoined]);
 // This panel never owns an action journal or sends a retry. The app persists
 // the original reference and clears private content before final dispatch.
-export function mountContentErasure({parent,h,button,check,context,load,send,onReview,onErased}){
+export function mountContentErasure({parent,h,button,check,context,load,send,onReview,onErased,initial}){
  const panel=h('details',undefined,'content-removal');panel.id='scope-content-erasure';panel.dataset.scopePrivacy='true';
  const body=h('div'),status=h('p');status.setAttribute('role','status');status.setAttribute('aria-label','Content removal status');
  panel.append(h('summary','Remove workspace content'),h('p','Remove this workspace’s saved conversations, every offer and amount, buyer notes, invitation email, AI text and duplicate saved responses. Both joined members must agree. An invitation that nobody joined has only its creator as a member.'),h('p','Minimal account references, decisions, hashes, times and consumed action limits remain to prevent repeats. This is workspace content removal, not account deletion. Provider records, hosting logs, database history and backups, and copies already downloaded have separate retention requirements.'),h('p','Save any copy you need first. Review pauses editing. Before locking removal, either member can cancel; an unlocked request expires after 24 hours. Locking cannot be withdrawn, even if removal needs recovery.'),body,status);
  const copy=button('Review account download options',()=>{const target=panel.ownerDocument.getElementById('scope-account-data');if(target){target.open=true;target.scrollIntoView({block:'start'});target.querySelector('summary')?.focus();}},true);panel.insertBefore(copy,body);parent.append(panel);
  panel.insertBefore(h('p','Locking also withholds private content before the purge finishes. Retained removal metadata stays available; save any content copy before locking.'),body);
- let view=null,busy=false,disposed=false,run=0,controls=[],formStamp='',mismatchHelp=null,message='Read the saved removal status before deciding.';
+ let view=initial?checked(initial,context().id):null,busy=false,disposed=false,run=0,controls=[],formStamp='',mismatchHelp=null,message=initial?'Saved removal status loaded.':'Read the saved removal status before deciding.';
  const refresh=button('Refresh removal status',()=>refreshStatus(),true);panel.insertBefore(refresh,body);
  const same=before=>!disposed&&stamp(context())===stamp(before);
  function checked(value,id){if(!value||value.workspaceId!==id||typeof value.contentErased!=='boolean'||value.request!==null&&(!value.request?.id||!states.has(value.request.state)))throw Error('Removal status could not be verified.');return value;}
@@ -60,5 +60,5 @@ export function mountContentErasure({parent,h,button,check,context,load,send,onR
   catch(error){if(same(before)){view=null;controls=[];body.replaceChildren();message=error.message||'Removal status is unavailable. No action was sent.';}}
   finally{if(!disposed&&own===run){busy=false;status.textContent=message;actions();}}
  }
- draw();void refreshStatus();return {element:panel,actions,refresh:refreshStatus,dispose(){disposed=true;run++;panel.remove();}};
+ draw();if(!initial)void refreshStatus();return {element:panel,actions,refresh:refreshStatus,dispose(){disposed=true;run++;panel.remove();}};
 }
