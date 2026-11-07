@@ -856,6 +856,15 @@ test('a hold after external admission preserves the original claim and intent wi
  await assert.rejects(merchant.admitContentErasure(f.id,input),code('recovery_read_only'));assert.equal(l.admits,1);const saved=await merchant.operationStatus(input.requestId);assert.equal(saved.request.state,'admitted_pending_ledger');assert.equal((await merchant.readContentErasure(f.id)).ledgerObservation,'matching');assert.equal(l.admits,1);
 });
 
+test('account-copy cutoffs preserve PostgreSQL microseconds without dropping the final saved row',async()=>{
+ const f=await fixture(),id=randomUUID(),prefix=new Date().toISOString().slice(0,19),saved=prefix+'.123350Z',at=prefix+'.123400Z',c=await pool.connect();
+ try{await c.query('BEGIN');await c.query('INSERT INTO scope_app.workspaces(id,merchant_id,buyer_id,created_at) VALUES($1,$2,$3,$4)',[id,f.merchantId,f.buyerId,saved]);await c.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages,created_at) VALUES($1,1,$2,$3,$4)',[id,f.created.source.binding,JSON.stringify(messages),saved]);await c.query('COMMIT');}finally{c.release();}
+ const frozenPool={connect:async()=>{const c=await pool.connect();return {query:(sql,args)=>c.query(sql.startsWith('SELECT')&&sql.includes(' AS at')&&sql.includes('clock_timestamp()')?sql.replace('clock_timestamp()',"TIMESTAMPTZ '"+at+"'"):sql,args),release:discard=>c.release(discard)};}};
+ const store=createWorkspaceStore({pool:frozenPool,getPrincipal:async()=>({id:f.merchantId})}),manifest=await store.accountRecord(),start=manifest.pages.find(x=>x.section==='workspaces');assert.equal(manifest.startedAt,at);
+ assert.equal(JSON.parse(Buffer.from(start.cursor,'base64url').toString()).at,at);const page=await store.accountRecordPage(start.cursor);assert.ok(page.entries.some(x=>x.workspaceId===id));assert.equal(page.readAt,at);
+ const legacy=JSON.parse(Buffer.from(start.cursor,'base64url').toString());legacy.at=prefix+'.124Z';assert.ok((await store.accountRecordPage(Buffer.from(JSON.stringify(legacy)).toString('base64url'))).entries.some(x=>x.workspaceId===id));
+});
+
 test('content erasure admission is disabled by default and exposes no HTTP route',async()=>{
  const f=await fixture();await assert.rejects(f.merchant.readContentErasure(f.id),code('workspace_erasure_unavailable'));await assert.rejects(f.merchant.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
  await assert.rejects(f.merchant.purgeContentErasure(f.id,{}),code('workspace_erasure_unavailable'));

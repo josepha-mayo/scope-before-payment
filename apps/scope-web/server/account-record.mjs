@@ -32,13 +32,14 @@ const queries={
 };
 const sections=Object.keys(queries),exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===keys.slice().sort().join(',');
 const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
+const clock="SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"') AS at";
 const notice='Private Scope data copy collected across multiple reads, not an atomic database snapshot or signed agreement. Concurrent or later activity may be absent. Recorded acceptance and payment observations do not establish current payment or funds. Keep this file private.';
 export function createAccountRecordMethods({transaction,principal,fail}){
   return {
     async accountRecord(){
       const user=await principal();
       return transaction(async client=>{
-        const at=(await client.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString();
+        const at=(await client.query(clock)).rows[0].at;
         return {format:'scope-account-record/v1',startedAt:at,account:{id:user.id,email:user.email,emailVerified:user.emailVerified},notice,
           excluded:'Passwords, sessions, credentials, OAuth tokens/encrypted token cache, approval links, other creators’ AI reviews, raw provider bodies, internal credential/replay-control records, duplicate operation response payloads, hosting logs/backups, Identity-provider history and unsaved browser edits. This is not an erasure or a database backup.',
           pages:sections.map(section=>({section,cursor:encode({actor:user.id,section,after:'',at})}))};
@@ -49,11 +50,11 @@ export function createAccountRecordMethods({transaction,principal,fail}){
       try{
         if(typeof token!=='string'||token.length>1500||!/^[A-Za-z0-9_-]+$/.test(token))throw Error();
         cursor=JSON.parse(Buffer.from(token,'base64url').toString('utf8'));
-        if(!exact(cursor,['actor','section','after','at'])||encode(cursor)!==token||typeof cursor.actor!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(cursor.actor)||!sections.includes(cursor.section)||typeof cursor.after!=='string'||cursor.after.length>512||!/^[A-Za-z0-9:-]*$/.test(cursor.after)||typeof cursor.at!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(cursor.at)||!Number.isFinite(Date.parse(cursor.at))||Date.parse(cursor.at)>Date.now()+5000||Date.parse(cursor.at)<Date.now()-86400000)throw Error();
+        if(!exact(cursor,['actor','section','after','at'])||encode(cursor)!==token||typeof cursor.actor!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(cursor.actor)||!sections.includes(cursor.section)||typeof cursor.after!=='string'||cursor.after.length>512||!/^[A-Za-z0-9:-]*$/.test(cursor.after)||typeof cursor.at!=='string'||!/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.(?:\d{3}|\d{6})Z$/.test(cursor.at)||!Number.isFinite(Date.parse(cursor.at))||new Date(cursor.at).toISOString().slice(0,23)!==cursor.at.slice(0,23)||Date.parse(cursor.at)>Date.now()+5000||Date.parse(cursor.at)<Date.now()-86400000)throw Error();
       }catch{return fail('account_record_cursor_invalid',422);}
       if(cursor.actor!==user.id)fail('session_changed',409);
       return transaction(async client=>{
-        const readAt=(await client.query('SELECT clock_timestamp() AS at')).rows[0].at.toISOString();
+        const readAt=(await client.query(clock)).rows[0].at;
         const params=[user.id,cursor.after,cursor.at];if(cursor.section==='invitations')params.push(user.email,user.emailVerified);
         const rows=(await client.query(`WITH members AS (${members}),records AS (${queries[cursor.section]}) SELECT key,data FROM records WHERE key COLLATE "C">$2 COLLATE "C" AND saved_at<=$3::timestamptz ORDER BY key COLLATE "C" LIMIT 26`,params)).rows;
         const page=rows.slice(0,25);

@@ -150,6 +150,10 @@ intent-observation and content-redaction decisions for current members. A
 recipient who has not joined receives no privacy history. Operation references
 are included only for that member's own actions; raw external ledger records
 and credentials remain excluded. Old content is not recreated by downloading.
+Manifest cutoffs and read timestamps preserve PostgreSQL microseconds so a row
+saved immediately before the cutoff is not lost to JavaScript millisecond
+rounding. Existing three-digit cursor timestamps remain accepted; a cursor is
+a read selector, not a retained content snapshot or membership grant.
 
 Privacy UI, browser recovery, native platform qualification,
 protection against pre-erasure restores across older
