@@ -737,7 +737,7 @@ test('content erasure admission is disabled by default and exposes no HTTP route
  let pools=0;const handler=createApiHandler({getUser:async()=>({id:f.merchantId}),getPool:()=>{pools++;return pool;}});const r=await handler(new Request('https://scope.example/api/v1/workspaces/'+f.id+'/erasure'));assert.equal(r.status,404);assert.equal(pools,0);
 });
 test('erasure review pauses ordinary API-store and direct SQL writes while preserving saved reads and account copies',async()=>{
- const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),stranger=erasureStore(f,f.strangerId,l.ledger);f.quote=(await f.merchant.publish(f.id,publication(f))).quote;
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),stranger=erasureStore(f,randomUUID(),l.ledger);f.quote=(await f.merchant.publish(f.id,publication(f))).quote;
  const input=await erasureRequest(merchant,f.id);await assert.rejects(stranger.requestContentErasure(f.id,input),code('workspace_not_found'));await assert.rejects(merchant.requestContentErasure(f.id,{...input,actorId:f.buyerId}),code('workspace_request_invalid'));
  const view=await merchant.requestContentErasure(f.id,input);assert.equal(view.request.state,'awaiting_consent');assert.equal(view.request.paused,true);assert.equal(view.request.ownConsent,false);assert.equal(view.contentErased,false);assert.deepEqual(await merchant.requestContentErasure(f.id,input),view);
  await assert.rejects(f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'An authored later request.'}]}),code('workspace_erasure_pending'));await assert.rejects(f.buyer.accept(f.id,acceptance(f.quote)),code('workspace_erasure_pending'));
@@ -785,7 +785,7 @@ test('erasure claims and receipts cannot be forged before consent or rewritten a
  const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
  await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_claims(id,request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4,$5)',[randomUUID(),rid,f.id,f.merchantId,randomUUID()]),code('23514'));
  await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const done=await merchant.admitContentErasure(f.id,erasureAdmit(rid));
- await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2)',[done.request.claim.id,{...done.request.claim.intent,merchantId:f.strangerId}]),code('23514'));
+ await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2)',[done.request.claim.id,{...done.request.claim.intent,merchantId:randomUUID()}]),code('23514'));
  for(const [table,column,value]of [['content_erasure_requests','id',rid],['content_erasure_consents','request_id',rid],['content_erasure_claims','request_id',rid],['content_erasure_ledger_receipts','claim_id',done.request.claim.id]])await assert.rejects(pool.query('UPDATE scope_app.'+table+' SET '+column+'='+column+' WHERE '+column+'=$1',[value]),code('23514'));
 });
 test('joining races an erasure snapshot without assigning a buyer inside a paused review',async()=>{
