@@ -86,10 +86,15 @@ invitation joining pause during active review and remain paused after a claim.
 An unadmitted request expires after24hours; a committed claim does not expire or
 become replaceable. Both current joined members must consent before a separate
 irreversible admission. An unjoined invitation has only the creator as member.
-Every decision links to its original operation fence. No network write precedes
+Every decision links to its original operation fence. Deferred database guards
+require the matching privacy kind, workspace and exact result metadata; an old
+create or publish operation cannot stand in for a privacy decision. No network write precedes
 the claim commit; duplicate actions and saved-status reads never re-admit it.
 Payment history and unresolved AI remain review exceptions, not permission to
 discard their evidence. This stage does not redact any payload or claim erasure.
+The owned restore drill also checks that an admitted request stays paused and
+that replaying its original operation makes no new external ledger write. This
+is admission recovery, not proof of erased-content protection after restore.
 
 The public HTTP create boundary now requires an email invitation. Direct buyer
 UUID assignment remains a trusted-server fixture path and is not accepted from

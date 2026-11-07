@@ -139,6 +139,21 @@ async function main(){
   assert.equal(poolReads,readsBeforeWrite);assert.deepEqual(io,{create:1,check:0,capture:0,ai:0});assert.equal(policy.writable(),false);
   receipt.checks.privateApplicationReadRestored=true;receipt.checks.postBackupClaimLossDemonstrated=true;receipt.checks.recoveryFencePreventsProviderReplay=true;
 
+  phase='restored_erasure_admission';
+  const admitted=(await target.query('SELECT id,workspace_id,request_id,actor_id,operation_request_id FROM scope_app.content_erasure_claims ORDER BY created_at,id LIMIT 1')).rows[0];
+  assert.ok(admitted,'An admitted erasure fixture must survive the restore');
+  let ledgerWrites=0;
+  const privacy=createWorkspaceStore({pool:target,getPrincipal:async()=>principal(admitted.actor_id),contentErasureEnabled:true,
+    erasureLedger:{read:async()=>null,admit:async()=>{ledgerWrites++;throw Error('restore_must_not_dispatch');}}});
+  const heldView=await privacy.read(admitted.workspace_id);assert.equal(heldView.erasurePending,true);
+  await assert.rejects(privacy.replaceSource(admitted.workspace_id,{requestId:randomUUID(),expectedVersion:heldView.source.version,messages:heldView.source.messages}),e=>e.code==='workspace_erasure_pending');
+  const replay=await privacy.admitContentErasure(admitted.workspace_id,{requestId:admitted.operation_request_id,erasureRequestId:admitted.request_id,confirmation:'admit-this-irreversible-content-erasure-intent'});
+  assert.equal(replay.request.claim.id,admitted.id);assert.equal(replay.request.paused,true);assert.equal(replay.contentErased,false);assert.equal(replay.ledgerObservation,'absent');
+  assert.equal((await privacy.operationStatus(admitted.operation_request_id)).request.claim.id,admitted.id);assert.equal(ledgerWrites,0);
+  receipt.checks.restoredErasureAdmissionPaused=true;receipt.checks.restoredErasureReplayDoesNotRedispatch=true;
+  // This checks admission state only. No fixture content has been erased, and
+  // protecting a pre-erasure snapshot from private reads is still separate work.
+
   phase='restored_immutability';
   const actualCheck=(await target.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='scope_app.checkout_calls'::regclass AND conname='checkout_calls_check'")).rows[0].definition;
   const expression=/^CHECK \(([\s\S]*)\)$/.exec(actualCheck)?.[1];assert.ok(expression);

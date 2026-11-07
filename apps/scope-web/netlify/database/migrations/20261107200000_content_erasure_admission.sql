@@ -133,6 +133,34 @@ CREATE TRIGGER immutable_content_erasure_withdrawal BEFORE UPDATE OR DELETE ON s
 CREATE TRIGGER immutable_content_erasure_claim BEFORE UPDATE OR DELETE ON scope_app.content_erasure_claims FOR EACH ROW EXECUTE FUNCTION scope_app.immutable_record();
 CREATE TRIGGER immutable_content_erasure_receipt BEFORE UPDATE OR DELETE ON scope_app.content_erasure_ledger_receipts FOR EACH ROW EXECUTE FUNCTION scope_app.immutable_record();
 
+-- The ordinary FK proves only that an operation exists. Require the exact
+-- privacy operation as well, after the state row and operation commit together.
+-- An old create/publish operation must never stand in for a privacy decision.
+CREATE FUNCTION scope_app.content_erasure_operation_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE expected_kind text; expected_result jsonb; rid uuid;
+BEGIN
+  IF TG_TABLE_NAME='content_erasure_requests' THEN
+    rid:=NEW.id; expected_kind:='erasure-request';
+  ELSE
+    rid:=NEW.request_id;
+    IF TG_TABLE_NAME='content_erasure_consents' THEN expected_kind:='erasure-consent';
+    ELSIF TG_TABLE_NAME='content_erasure_withdrawals' THEN expected_kind:='erasure-withdraw';
+    ELSE expected_kind:='erasure-admit'; END IF;
+  END IF;
+  expected_result:=jsonb_build_object('workspaceId',NEW.workspace_id::text,'erasureRequestId',rid::text);
+  IF TG_TABLE_NAME='content_erasure_claims' THEN expected_result:=expected_result||jsonb_build_object('erasureClaimId',NEW.id::text); END IF;
+  IF NOT EXISTS(SELECT 1 FROM scope_app.operations WHERE actor_id=NEW.actor_id AND request_id=NEW.operation_request_id
+      AND workspace_id=NEW.workspace_id AND kind=expected_kind AND result=expected_result) THEN
+    RAISE EXCEPTION 'scope_content_erasure_operation_rejected' USING ERRCODE='23514';
+  END IF;
+  RETURN NULL;
+END;
+$$;
+CREATE CONSTRAINT TRIGGER content_erasure_request_operation AFTER INSERT ON scope_app.content_erasure_requests DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION scope_app.content_erasure_operation_guard();
+CREATE CONSTRAINT TRIGGER content_erasure_consent_operation AFTER INSERT ON scope_app.content_erasure_consents DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION scope_app.content_erasure_operation_guard();
+CREATE CONSTRAINT TRIGGER content_erasure_withdrawal_operation AFTER INSERT ON scope_app.content_erasure_withdrawals DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION scope_app.content_erasure_operation_guard();
+CREATE CONSTRAINT TRIGGER content_erasure_claim_operation AFTER INSERT ON scope_app.content_erasure_claims DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION scope_app.content_erasure_operation_guard();
+
 ALTER TABLE scope_app.operations DROP CONSTRAINT operations_kind_check;
 ALTER TABLE scope_app.operations ADD CONSTRAINT operations_kind_check CHECK(kind IN
  ('create','replace-source','publish','accept','join','request-changes','withdraw-changes','draft','checkout-create','checkout-check','checkout-capture','revoke-invitation',

@@ -791,6 +791,18 @@ test('erasure claims and receipts cannot be forged before consent or rewritten a
 test('joining races an erasure snapshot without assigning a buyer inside a paused review',async()=>{
  const f=await invitedFixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),input=await erasureRequest(merchant,f.id);const results=await Promise.allSettled([merchant.requestContentErasure(f.id,input),f.buyer.joinInvitation(f.id,joining())]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(l.admits,0);
 });
+test('an existing ordinary operation cannot stand in for an erasure request, consent, withdrawal or claim',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),publish=publication(f);await f.merchant.publish(f.id,publish);
+ const createId=(await pool.query("SELECT request_id FROM scope_app.operations WHERE workspace_id=$1 AND kind='create'",[f.id])).rows[0].request_id;
+ const rejected=e=>e.code==='23514'&&e.message==='scope_content_erasure_operation_rejected';
+ await assert.rejects(pool.query("WITH stamp AS (SELECT date_trunc('milliseconds',clock_timestamp()) AS at) INSERT INTO scope_app.content_erasure_requests(id,workspace_id,actor_id,operation_request_id,merchant_id,buyer_id,source_version,source_binding,revision,created_at,expires_at) SELECT $1,$2,$3,$4,$3,$5,1,$6,1,at,at+interval '24 hours' FROM stamp",[randomUUID(),f.id,f.merchantId,createId,f.buyerId,f.created.source.binding]),rejected);
+ const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ for(const table of ['content_erasure_consents','content_erasure_withdrawals'])await assert.rejects(pool.query('INSERT INTO scope_app.'+table+'(request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4)',[rid,f.id,f.merchantId,publish.requestId]),rejected);
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));
+ await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_claims(id,request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4,$5)',[randomUUID(),rid,f.id,f.merchantId,publish.requestId]),rejected);
+ assert.equal((await merchant.readContentErasure(f.id)).request.state,'ready_to_admit');assert.equal(l.admits,0);
+});
+
 test('withdrawal and irreversible admission serialize on the workspace without replacing a claim',async()=>{
  const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
  await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const outcomes=await Promise.allSettled([merchant.admitContentErasure(f.id,erasureAdmit(rid)),buyer.withdrawContentErasure(f.id,erasureWithdraw(rid))]);assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);assert.ok(l.admits<=1);
