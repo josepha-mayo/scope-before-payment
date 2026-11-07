@@ -63,7 +63,7 @@ test('sign-out preserves a lost AI action reference for the original account and
   await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your private workspace',exact:true})).toBeVisible();expect(await page.evaluate(key=>sessionStorage.getItem(key),key)).toBe(before);
   await page.getByLabel('Email address',{exact:true}).fill('creator@invented.example');await page.getByLabel('Password',{exact:true}).fill('fixture-password-123');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();
   await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByText('Suggestions saved · review required',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeHidden();
-  expect(await page.evaluate(key=>sessionStorage.getItem(key),key)).toBe(null);expect(f.app.counts.ai).toBe(1);expect(f.app.counts.publish).toBe(0);expect(f.external).toEqual([]);
+  await expect.poll(()=>page.evaluate(key=>sessionStorage.getItem(key),key)).toBe(null);expect(f.app.counts.ai).toBe(1);expect(f.app.counts.publish).toBe(0);expect(f.external).toEqual([]);
  }finally{await f.close();}
 });
 
