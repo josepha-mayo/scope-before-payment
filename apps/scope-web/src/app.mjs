@@ -32,7 +32,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const h = (tag, text, className) => { const e=doc.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e; };
   const button = (text, action, secondary=false) => { const b=h('button',text,secondary?'secondary':'');b.type='button';b.onclick=action;return b; };
   function sectionJump(label,id){
-    const control=button(label,()=>{const target=doc.getElementById(id),heading=target?.querySelector('h2');if(!target||!heading)return;target.scrollTop=0;target.scrollIntoView({block:'start',behavior:'instant'});heading.tabIndex=-1;heading.focus({preventScroll:true});},true);
+    const control=button(label,()=>{const target=doc.getElementById(id),heading=target?.querySelector('h2,summary');if(!target||!heading)return;if(target.tagName==='DETAILS')target.open=true;target.scrollTop=0;target.scrollIntoView({block:'start',behavior:'instant'});if(heading.tagName!=='SUMMARY')heading.tabIndex=-1;heading.focus({preventScroll:true});},true);
     control.setAttribute('aria-controls',id);return control;
   }
   const field = (text, type='input') => { const label=h('label'), input=doc.createElement(type);label.append(h('span',text),input);return {label,input}; };
@@ -247,7 +247,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
       navigation.append(sectionJump('Conversation','scope-conversation'));
       if(workspace.role==='merchant')navigation.append(sectionJump('AI review','scope-ai-review'),sectionJump('Offer editor','scope-offer-editor'));
       navigation.append(sectionJump(workspace.role==='buyer'?'Your exact offer':'Published offer','scope-published-offer'));
-      if(workspace.role==='buyer')navigation.append(sectionJump('Your decision','scope-buyer-decision'));view.append(navigation);
+      if(workspace.role==='buyer')navigation.append(sectionJump('Your decision','scope-buyer-decision'));
+      if(state.user?.contentErasureEnabled===true){navigation.classList.add('with-privacy');navigation.append(sectionJump('Content removal','scope-content-erasure'));}view.append(navigation);
       const grid=h('div',undefined,'workspace-grid');conversationBox=h('section',undefined,'conversation');conversationBox.id='scope-conversation';const right=h('div');grid.append(conversationBox,right);view.append(grid);drawSource(workspace);changeBox=h('section');right.append(changeBox);drawChanges(workspace);
       if(workspace.role==='merchant'){
         if(workspace.invitation){invitationBox=h('aside',undefined,'invite');right.append(invitationBox);drawInvitation(workspace);}

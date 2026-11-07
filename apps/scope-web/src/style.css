@@ -6,6 +6,8 @@ h1,.cards a{overflow-wrap:anywhere}
 .workspace-nav{display:flex;gap:8px;position:sticky;top:0;z-index:10;background:#f4f2e9;border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:20px}
 .workspace-nav button{flex:1;margin:0;font-size:.82rem;padding:10px 12px}
 .workspace-grid section[id]{scroll-margin-top:90px}
+.workspace-grid details[id]{scroll-margin-top:90px}.content-removal{border:1px solid var(--line);border-radius:12px;padding:24px;background:var(--paper)}.content-removal .remove-final:not(:disabled){border-color:#99482f;color:#7c3524;background:#fff0e9}
+@media(max-width:680px){.workspace-nav.with-privacy+.workspace-grid section[id],.workspace-nav.with-privacy+.workspace-grid details[id]{scroll-margin-top:190px}.content-removal{padding:18px}}
 .conversation{top:90px;max-height:calc(100vh - 110px)}
 .ai-state{border-left:3px solid var(--accent);padding:10px 14px;font-size:.88rem;background:#eef2e5}
 .ai-review .source-citation{padding:10px 0;margin:8px 0}
