@@ -25,7 +25,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   let ai=null,checkout=null,record=null,accountRecord=null,revisionHistory=null;
   let renderedPath=location.pathname;
   let view, notice, session, recovery, editor, sourceEditor, quoteBox, conversationBox, invitationBox, publish, accept, discard, merchantCheck, buyerCheck, currentWorkspaceId;
-  let invitationCheck,invitationRevoke,invitationAck=false;
+  let invitationCheck,invitationRevoke,invitationAck=false,paymentPreset,paymentPresetHelp;
   let changeBox, changeForm, changeNote, changeCheck, changeSubmit, responseCheck, changeAck=null, responseAck=null, withdrawCheck, withdrawSubmit, withdrawAck=null;
   const h = (tag, text, className) => { const e=doc.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e; };
   const button = (text, action, secondary=false) => { const b=h('button',text,secondary?'secondary':'');b.type='button';b.onclick=action;return b; };
@@ -41,8 +41,16 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const quoteKey = () => JSON.stringify([state.workspace?.workspaceId,state.workspace?.currentQuote?.binding,state.workspace?.source.binding,state.workspace?.openChangeRequest?.id]);
   const changeKey = () => JSON.stringify([quoteKey(),changeNote?.value]);
   const valid = () => definitions.every(([k]) => typeof state.draft[k]==='string' && state.draft[k].trim() && state.draft[k].length<=1200) && /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price) && Number(state.draft.price)>=0.01 && Number(state.draft.price)<=10000;
+  function presetReason(){
+    if(blocked())return state.user?.readOnly?'Changes are temporarily paused.':'Finish the pending saved action before changing payment terms.';
+    if(!state.confirmed)return 'Refresh the saved offer before changing payment terms.';
+    if(state.draft.terms)return 'Keep or edit your current terms. To use the preset, clear the terms field after reviewing it.';
+    if(!/^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price)||Number(state.draft.price)<0.01||Number(state.draft.price)>10000)return 'Enter a price from USD0.01 to USD10,000.00 to use this preset.';
+    return 'Adds a single full payment for the current price before work starts. Review it before publishing.';
+  }
   function actions() {
     ai?.actions();checkout?.actions();record?.actions();accountRecord?.actions();revisionHistory?.actions();
+    if(paymentPreset){paymentPresetHelp.textContent=presetReason();paymentPreset.disabled=blocked()||!state.confirmed||!!state.draft.terms||!/^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price)||Number(state.draft.price)<0.01||Number(state.draft.price)>10000;}
     if(invitationBox)invitationBox.hidden=!state.confirmed;
     if(invitationCheck){invitationCheck.disabled=blocked()||!state.confirmed||!state.workspace?.invitation?.canRevoke;invitationRevoke.disabled=invitationCheck.disabled||!invitationAck;}
     if(publish)publish.disabled=blocked()||!state.confirmed||state.sourceDirty||!valid()||state.merchantAck!==key()||!!state.workspace?.openChangeRequest&&responseAck!==state.workspace.openChangeRequest.id;
@@ -68,7 +76,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   accountRecord=mountAccountRecord({parent:footer,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,generation:state.generation,blocked:state.pending||!!state.intent,recovery:state.user?.readOnly===true}),load:async(path,actor)=>{const result=await api(path,undefined,actor);if(path==='me'&&result.id!==actor){retireSession();throw Error('account_changed');}return result;}});
   const check = (text, action) => { const label=h('label',undefined,'check'), input=doc.createElement('input');input.type='checkbox';input.onchange=action;label.append(input,h('span',text));return {label,input}; };
   const markEdit = () => { state.generation++;state.dirty=true;state.merchantAck=null;state.buyerAck=null;responseAck=null;actions(); };
-  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;revisionHistory?.dispose();revisionHistory=null;editor=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;invitationCheck=null;invitationRevoke=null;invitationAck=false;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
+  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;revisionHistory?.dispose();revisionHistory=null;editor=null;paymentPreset=null;paymentPresetHelp=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;invitationCheck=null;invitationRevoke=null;invitationAck=false;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
   const intentKey = user => 'scope-hosted-action-v1:'+user;
   function readIntent(user) { try { const raw=storage.getItem(intentKey(user));if(raw===null)return null;const x=JSON.parse(raw);if(raw.length>1024||Object.keys(x).sort().join(',')!=='actorId,path,requestId'||x.actorId!==user||!new RegExp('^'+uuid+'$').test(x.requestId)||!/^\/api\/v1\/(workspaces|workspaces\/[a-f0-9-]+\/(source|publish|accept|request-changes|withdraw-changes|draft|checkout(?:\/check|\/capture)?)|invitations\/[a-f0-9-]+\/(?:join|revoke))$/.test(x.path))throw Error();return x; }catch{return{invalid:true};} }
   function persist(intent) { const raw=JSON.stringify(intent);storage.setItem(intentKey(intent.actorId),raw);if(storage.getItem(intentKey(intent.actorId))!==raw)throw Error('storage'); }
@@ -229,7 +237,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
         const section=h('section');section.id='scope-offer-editor';section.append(h('h2','Write your exact offer'),h('p','Decide what is included, what is excluded, and the price. Optional AI review keeps suggestions separate until you check and copy them.'));
         editor=h('form');state.draft=Object.fromEntries(definitions.map(([k])=>[k,workspace.currentQuote?.fields[k]||'']));
         for(const[k,label,type]of definitions){const entry=field(label,type);entry.input.name=k;entry.input.value=state.draft[k];entry.input.required=true;entry.input.maxLength=k==='price'?16:1200;if(k==='price')entry.input.inputMode='decimal';entry.input.oninput=()=>{state.draft[k]=entry.input.value;markEdit();};editor.append(entry.label);}
-        editor.append(button('Use full payment before work',()=>{if(state.draft.terms||! /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price)||Number(state.draft.price)<0.01||Number(state.draft.price)>10000)return;state.draft.terms='Single full payment of USD'+Number(state.draft.price).toFixed(2)+' before work starts.';editor.elements.namedItem('terms').value=state.draft.terms;markEdit();},true));
+        paymentPreset=button('Use full payment before work',()=>{actions();if(paymentPreset.disabled)return;state.draft.terms='Single full payment of USD'+Number(state.draft.price).toFixed(2)+' before work starts.';editor.elements.namedItem('terms').value=state.draft.terms;markEdit();},true);
+        paymentPresetHelp=h('p');paymentPresetHelp.id='scope-payment-preset-help';paymentPreset.setAttribute('aria-describedby',paymentPresetHelp.id);editor.append(paymentPreset,paymentPresetHelp);
         const ack=check('I reviewed the conversation, all six offer fields, exclusions and payment terms. Publish this exact offer.',()=>{state.merchantAck=merchantCheck.checked?key():null;actions();});merchantCheck=ack.input;publish=button('Publish exact offer',null);publish.type='submit';editor.append(ack.label,publish);
         const response=check('I reviewed the buyer’s open request. Publish this revision as my response.',()=>{responseAck=responseCheck.checked?state.workspace?.openChangeRequest?.id:null;actions();});responseCheck=response.input;editor.insertBefore(response.label,ack.label);
         editor.onsubmit=async event=>{event.preventDefault();if(publish.disabled)return;const generation=state.generation,w=state.workspace;const result=await write('workspaces/'+id+'/publish',{expectedRevision:w.currentQuote?.revision||0,sourceVersion:w.source.version,sourceBinding:w.source.binding,fields:{...state.draft},responseTo:w.openChangeRequest?.id||null,confirmation:'publish-exact-reviewed-offer'});if(result){if(generation===state.generation){state.dirty=false;}await refreshWorkspace();}};
