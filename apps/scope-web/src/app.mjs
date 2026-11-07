@@ -194,10 +194,15 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
       }
     }
   }
+  async function confirmReader(actor,epoch){
+    try{const current=await api('me',undefined,actor);if(epoch!==state.epoch||state.user?.id!==actor)return false;if(current.id!==actor){retireSession();return false;}if(current.readOnly===true){state.user.readOnly=true;actions();}return true;}
+    catch(error){if(error.status===401&&epoch===state.epoch&&state.user?.id===actor){retireSession();return false;}throw error;}
+  }
   async function refreshWorkspace(){
     if(!currentWorkspaceId)return;const id=currentWorkspaceId,e=state.epoch,actor=state.user?.id;
-    try{const workspace=await api('workspaces/'+id);if(e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;state.merchantAck=null;state.buyerAck=null;changeAck=null;responseAck=null;drawSource(workspace);drawQuote(workspace);drawChanges(workspace);if(ai)void ai.refresh();if(checkout)void checkout.refresh();if(invitationBox)invitationBox.querySelector('h2').textContent=workspace.buyerJoined?'Buyer has joined':'Invite the buyer';actions();say(state.dirty||state.sourceDirty?'Current saved offer loaded. Your unsaved text is preserved; review it again before publishing.':'Current saved offer loaded.');}
-    catch(error){if(e===state.epoch){state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say(error.message||'Saved status could not be confirmed.');}}
+    state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say('Reading the saved offer and checking your account…');
+    try{if(!await confirmReader(actor,e))return;const workspace=await api('workspaces/'+id,undefined,actor);if(!await confirmReader(actor,e)||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;changeAck=null;responseAck=null;drawSource(workspace);drawQuote(workspace);drawChanges(workspace);if(ai)void ai.refresh();if(checkout)void checkout.refresh();if(invitationBox)invitationBox.querySelector('h2').textContent=workspace.buyerJoined?'Buyer has joined':'Invite the buyer';actions();say(state.dirty||state.sourceDirty?'Current saved offer loaded. Your unsaved text is preserved; review it again before publishing.':'Current saved offer loaded.');}
+    catch(error){if(e===state.epoch){try{if(!await confirmReader(actor,e))return;}catch{/* A failed identity read cannot confirm this view. */}if(e!==state.epoch)return;state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say(error.message||'Saved status could not be confirmed.');}}
   }
   async function openWorkspace(id){
     renderedPath='/workspace/'+id;
@@ -278,5 +283,5 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const unsubscribe=auth.onAuthChange?.(authChanged);
   const pop=()=>{if(state.dirty||state.sourceDirty||state.pending){history.replaceState(null,'',renderedPath);say('Discard unsaved changes or finish the pending action before leaving.');return;}state.epoch++;clearDirty();loadRoute();};globalThis.addEventListener?.('popstate',pop);
   const unload=event=>{if(state.dirty||state.sourceDirty){event.preventDefault();event.returnValue='';}};globalThis.addEventListener?.('beforeunload',unload);
-  return{ready,destroy(){state.epoch++;accountRecord?.dispose();unsubscribe?.();globalThis.removeEventListener?.('popstate',pop);globalThis.removeEventListener?.('beforeunload',unload);root.replaceChildren();}};
+  return{ready,destroy(){state.epoch++;revisionHistory?.dispose();accountRecord?.dispose();unsubscribe?.();globalThis.removeEventListener?.('popstate',pop);globalThis.removeEventListener?.('beforeunload',unload);root.replaceChildren();}};
 }

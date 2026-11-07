@@ -25,8 +25,10 @@ not acceptance of a newer offer or proof of payment. An unconfirmed read hides
 the comparison/history controls; an account change retires the private screen.
 All user text is rendered literally, including in historical fields.
 
-The feature uses the quote history already returned by the authenticated saved
-workspace read. It adds no request, migration, dependency, provider dispatch or
+The comparison control uses the quote history already returned by the saved
+workspace read and makes no history request. An explicit workspace refresh now
+confirms the account before and after its saved-offer read; failed reads remain
+unconfirmed. It adds no endpoint, migration, dependency, AI/PayPal dispatch or
 payment authority. Historical conversation text is available in the separate
 account data copy rather than loaded again by the comparison control.
 

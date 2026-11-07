@@ -22,6 +22,7 @@ export function mountRevisionHistory({parent,h,field,workspace,covered=[],contex
     panel.append(changes);
   }
   const history=h('details',undefined,'revision-history'),select=field('View earlier revision','select'),snapshot=h('div');
+  select.input.setAttribute('aria-label','View earlier revision');
   for(const q of older){const option=h('option','Revision '+q.revision+(q.accepted?' · acceptance recorded':''));option.value=String(q.revision);select.input.append(option);}
   function render(){
     const q=older.find(item=>String(item.revision)===select.input.value);if(!q)return;
