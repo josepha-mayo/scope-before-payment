@@ -6,6 +6,11 @@ HTTP API and actual PostgreSQL in an isolated fixture. The approximately
 authored identities, AI replay and PayPal responses; no real transaction.
 It is not the final required public YouTube demonstration or a Devpost entry.
 
+The payment chapter holds the created order, checked approval, lost reply and
+recovered record on screen separately. Its receipt records three payment views
+with timestamps and full-viewport assertions; phase screenshots are retained.
+Inspect rendered frames as well as passing action counts before using the cut.
+
 The script creates a fresh invented Aster Studio workspace, replays observed
 suggestion text through the actual validation/review UI, publishes an exact
 offer, records a buyer change request, publishes a linked response at a new
