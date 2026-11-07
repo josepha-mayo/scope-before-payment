@@ -66,7 +66,7 @@ suggestions was needed in this case; there were no unresolved questions shown.
 
 The manually entered price remained `180.00` after inference. A full reload
 then showed the same saved AI result with no inference action available for
-that source. Unsaved editor values were cleared by reload, as expected; this
+that source. Unsaved editor values are not durable; this
 was not a test of durable draft editing. Price was entered manually again as
 `180.00`. Each of the five copy buttons was disabled until its separate review
 checkbox was selected. Copying the reviewed suggestions then preserved that
