@@ -1,0 +1,9 @@
+body.scope-owned-review-cut { padding-bottom: 120px; }
+#scope-review-caption {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 2147483647;
+  background: #102c29; color: #fff; padding: 14px 32px; min-height: 92px;
+  font: 17px/1.4 system-ui; pointer-events: none; box-sizing: border-box;
+}
+#scope-review-caption strong, #scope-review-caption span, #scope-review-caption small { display: block; }
+#scope-review-caption strong { font-size: 24px; }
+#scope-review-caption small { color: #c0e5d7; font-size: 12px; margin-top: 5px; }

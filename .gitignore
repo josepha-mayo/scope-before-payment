@@ -6,6 +6,7 @@ node_modules/
 .netlify/
 playwright-report/
 test-results/
+tools/browser-tests/review-cut-output/
 *.sqlite
 *.sqlite3
 *.db

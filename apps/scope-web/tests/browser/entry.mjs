@@ -2,6 +2,7 @@
 // imports Netlify Identity directly and cannot select this adapter at runtime.
 import { mount } from '../../src/app.mjs';
 import '../../src/style.css';
+import './review-cut.css';
 const events=[],listeners=[];
 const logoutMode=new URLSearchParams(location.search).get('testLogout');
 let logoutFailures=0;
