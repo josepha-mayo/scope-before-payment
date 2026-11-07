@@ -62,6 +62,13 @@ test('the real pinned SDK uses the fixed strong region, automatic native options
  assert.deepEqual(await ledger.read(id),intent());assert.equal(data.size,1);assert.equal(calls.filter(c=>c.method==='put').length,3);
  for(const o of options){assert.equal(o.name,'scope-content-erasure-v1');assert.equal(o.region,'us-east-2');assert.equal(o.consistency,'strong');assert.equal(Object.hasOwn(o,'token'),false);assert.equal(Object.hasOwn(o,'siteID'),false);}
 });
+test('a recovery hold keeps original metadata readable but blocks admission and each late write transport',async()=>{
+ const context={deploy:{context:'production',published:true},site:{id:'ab4ea802-f4d3-4dee-9588-8581897b460b',url:'https://scope-before-payment.netlify.app'}};let held=true,opened=0,calls=0;
+ const ledger=createProductionErasureLedger({getDeploymentContext:()=>context,canRecord:()=>!held,request:async()=>{calls++;throw Error('must not dispatch');},storeFactory:options=>{opened++;return {get:async()=>stream(JSON.stringify(intent())),set:async()=>{held=true;await options.fetch('https://owned.invalid',{method:'put'});throw Error('unreachable');}};}});
+ assert.equal(ledger.available(),false);assert.deepEqual(await ledger.read(id),intent());const before=opened;await assert.rejects(ledger.admit(intent()),{code:'erasure_ledger_unavailable'});assert.equal(opened,before);
+ held=false;assert.equal(ledger.available(),true);await assert.rejects(ledger.admit(intent()),{code:'erasure_ledger_unavailable'});assert.equal(calls,0);assert.deepEqual(await ledger.read(id),intent());
+});
+
 test('a changed deployment context is rejected again immediately before SDK transport',async()=>{
  const context={deploy:{context:'production',published:true},site:{id:'ab4ea802-f4d3-4dee-9588-8581897b460b',url:'https://scope-before-payment.netlify.app'}};let calls=0;
  const ledger=createProductionErasureLedger({getDeploymentContext:()=>context,request:async()=>{calls++;return new Response(null,{status:404});},storeFactory:options=>({get:async()=>{context.deploy.context='deploy-preview';await options.fetch('https://owned-blobs.invalid');return null;}})});

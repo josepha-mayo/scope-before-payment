@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createApiHandler } from '../server/api.mjs';
 const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', origin = 'https://scope.example';
 const headers = { Origin: origin, 'Content-Type': 'application/json', 'X-Scope-Action': 'explicit-user-action', 'X-Scope-Session': id };
-function fixture(user = { id }) { let pools = 0, identities = 0; return { handler: createApiHandler({ getUser: async () => { identities++; return user; }, getPool: () => { pools++; throw Error('PRIVATE_DB_DETAIL'); }, bodyTimeoutMs: 20 }), pools: () => pools, identities: () => identities }; }
+function fixture(user = { id },extra={}) { let pools = 0, identities = 0; return { handler: createApiHandler({ getUser: async () => { identities++; return user; }, getPool: () => { pools++; throw Error('PRIVATE_DB_DETAIL'); }, bodyTimeoutMs: 20,...extra }), pools: () => pools, identities: () => identities }; }
 const request = (path = 'workspaces', options = {}) => new Request(origin + '/api/v1/' + path, options);
 async function rejected(f, req, status, code) { const response = await f.handler(req); assert.equal(response.status, status); assert.equal((await response.json()).error.code, code); assert.equal(response.headers.get('cache-control'), 'private, no-store'); assert.equal(response.headers.get('access-control-allow-origin'), null); assert.equal(f.pools(), 0); }
 test('anonymous and malformed identities cannot reach database code or use a supplied role header', async () => {
@@ -51,6 +51,27 @@ test('the public create endpoint requires an invitation instead of assigning an 
  for(const body of [{requestId:id,buyerId:id,messages:[]},{requestId:id,buyerId:id,buyerEmail:'buyer@invented.example',messages:[]},{requestId:id,messages:[]}])await rejected(fixture(),request('workspaces',{method:'POST',headers,body:JSON.stringify(body)}),422,'workspace_invitation_required');
  const f=fixture();const r=await f.handler(request('workspaces',{method:'POST',headers,body:JSON.stringify({requestId:id,buyerEmail:'buyer@invented.example',messages:[]})}));assert.equal(r.status,503);assert.equal(f.pools(),1);
 });
+test('disabled privacy routes cannot be enabled by browser flags and never authenticate or open the database',async()=>{
+ for(const action of ['', '/request','/consent','/withdraw','/admit','/purge']){
+  const f=fixture();await rejected(f,request('workspaces/'+id+'/erasure'+action,{method:action?'POST':'GET',headers:{...headers,'X-Scope-Erasure-Enabled':'true'},...(action?{body:'{"contentErasureEnabled":true}'}:{})}),404,'route_not_found');assert.equal(f.identities(),0);
+ }
+ assert.throws(()=>fixture({id},{contentErasureEnabled:'true'}),/api_configuration/);
+});
+
+test('enabled privacy endpoints retain authentication, strict methods, origin, session and recovery guards before storage',async()=>{
+ const enabled={contentErasureEnabled:true};
+ await rejected(fixture(null,enabled),request('workspaces/'+id+'/erasure'),401,'authentication_required');
+ for(const action of ['request','consent','withdraw','admit','purge']){
+  const path='workspaces/'+id+'/erasure/'+action;
+  await rejected(fixture(null,enabled),request(path,{method:'POST',headers,body:'{}'}),401,'authentication_required');
+  await rejected(fixture({id},enabled),request(path),405,'method_not_allowed');
+  await rejected(fixture({id},enabled),request(path,{method:'POST',headers:{...headers,Origin:'https://foreign.invalid'},body:'{}'}),403,'request_origin_rejected');
+  await rejected(fixture({id},enabled),request(path,{method:'POST',headers:{...headers,'X-Scope-Session':'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},body:'{}'}),409,'session_changed');
+  await rejected(fixture({id},{...enabled,canWrite:()=>false}),request(path,{method:'POST',headers,body:'unparsed'}),503,'recovery_read_only');
+ }
+ const response=await fixture({id},enabled).handler(request('me'));assert.equal((await response.json()).data.contentErasureEnabled,true);
+});
+
 test('a session precondition cannot impersonate another verified account or submit its stale form', async () => {
   const f = fixture(); await rejected(f, request('workspaces', {method:'POST',headers:{...headers,'X-Scope-Session':'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},body:'{}'}),409,'session_changed');
 });

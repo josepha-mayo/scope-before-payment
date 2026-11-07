@@ -3,8 +3,9 @@ import {randomUUID} from 'node:crypto';
 // Disabled release. Admission alone never erases content. The explicit purge
 // checks the original external intent, then removes payloads in one transaction.
 // Protection of pre-erasure restored content remains separate required work.
-export function createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled,ledger,requestTtlMs=86400000}){
- if(typeof enabled!=='boolean'||!Number.isInteger(requestTtlMs)||requestTtlMs<100||requestTtlMs>86400000)throw TypeError('content_erasure_configuration');
+export function createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled,ledger,requestTtlMs=86400000,canWrite=()=>true}){
+ if(typeof enabled!=='boolean'||typeof canWrite!=='function'||!Number.isInteger(requestTtlMs)||requestTtlMs<100||requestTtlMs>86400000)throw TypeError('content_erasure_configuration');
+ const needWritable=()=>{let yes=false;try{yes=canWrite()===true;}catch{}if(!yes)fail('recovery_read_only',503);};
  const available=()=>{try{return enabled&&typeof ledger?.admit==='function'&&typeof ledger?.read==='function'&&(typeof ledger.available!=='function'||ledger.available()===true);}catch{return false;}};
  const needEnabled=()=>{if(!enabled)fail('workspace_erasure_unavailable',503);};
  async function status(client,user,id,requestId=null){
@@ -27,10 +28,13 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
    // history and all original claim/quota facts remain outside that transition.
    const saved=await previous(client,user,input.requestId,fingerprint);
    if(saved)return {view:await status(client,user,id,saved.erasureRequestId),dispatch:null,actorId:user};
+   needWritable();
    if(w.content_erased)fail('workspace_content_erased',410);
    const result=await action(client,w,user,input);
+   needWritable();
    await record(client,user,input,id,kind,fingerprint,result.saved);
-   return {view:await status(client,user,id,result.saved.erasureRequestId),dispatch:result.dispatch||null,actorId:user};
+   const view=await status(client,user,id,result.saved.erasureRequestId);needWritable();
+   return {view,dispatch:result.dispatch||null,actorId:user};
   });
  }
  async function currentRequest(client,w,id){
@@ -64,6 +68,7 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
     return {saved:false,view};
    },true);
    if(before.saved)return before.view;
+   needWritable();
    // Read the original key only. Missing/unknown/conflicting storage never
    // authorizes re-admission, a replacement claim, or partial redaction.
    let observed;try{observed=await ledger.read(id);}catch{fail('workspace_erasure_ledger_unconfirmed',503);}
@@ -126,6 +131,7 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
     return {saved:{workspaceId:id,erasureRequestId:r.id,erasureClaimId},dispatch:{id:erasureClaimId,intent}};
    });
    if(!result.dispatch)return observation(result.view);
+   needWritable();
    // No network operation is admitted until claim + original operation commit.
    // A duplicate request only reads; it never calls ledger.admit again.
    let saved;try{saved=await ledger.admit(result.dispatch.intent);}catch{return observation(result.view);}
@@ -133,8 +139,8 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
    if(!matches)return {...result.view,ledgerObservation:'conflict'};
    const user=result.actorId;
    const view=await transaction(async client=>{
-    await workspace(client,user,id);await client.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2) ON CONFLICT(claim_id) DO NOTHING',[result.dispatch.id,result.dispatch.intent]);
-    return status(client,user,id,result.view.request.id);
+    await workspace(client,user,id);needWritable();await client.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2) ON CONFLICT(claim_id) DO NOTHING',[result.dispatch.id,result.dispatch.intent]);
+    const saved=await status(client,user,id,result.view.request.id);needWritable();return saved;
    });return observation(view);
   },
  };

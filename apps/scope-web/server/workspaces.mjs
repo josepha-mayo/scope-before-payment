@@ -50,7 +50,7 @@ const checkedQuote = (row, workspaceId) => {
 // getPrincipal is a trusted server-side authentication adapter, never request
 // JSON, a role header or a client-supplied user ID. It is resolved for every call.
 // This module does not authenticate a browser or expose an HTTP endpoint.
-export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checkoutProvider, checkoutTimeoutMs,contentErasureEnabled=workspaceContentErasureEnabled,erasureLedger,erasureRequestTtlMs }) {
+export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checkoutProvider, checkoutTimeoutMs,contentErasureEnabled=workspaceContentErasureEnabled,erasureLedger,erasureRequestTtlMs,canWrite=()=>true }) {
   if (!pool || typeof pool.connect !== 'function' || typeof getPrincipal !== 'function') throw new TypeError('workspace_store_configuration');
   async function principal() {
     let user; try { user = await getPrincipal(); } catch { fail('authentication_required', 401); }
@@ -123,7 +123,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
   }
   const drafts=createDraftMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider:draftProvider});
   const checkout=createCheckoutMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,checkedQuote,openChange,fingerprintFor,fail,provider:checkoutProvider,timeoutMs:checkoutTimeoutMs});
-  const erasure=createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled:contentErasureEnabled,ledger:erasureLedger,requestTtlMs:erasureRequestTtlMs});
+  const erasure=createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled:contentErasureEnabled,ledger:erasureLedger,requestTtlMs:erasureRequestTtlMs,canWrite});
   return Object.freeze({
     ...createCollectionPages({transaction,principal,fail}),
     ...createAccountRecordMethods({transaction,principal,fail}),

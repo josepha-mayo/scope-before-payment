@@ -71,11 +71,14 @@ export function createErasureLedger({openStore,request=fetch,timeoutMs=3000}){
  });
 }
 
-export function createProductionErasureLedger({getDeploymentContext=getContext,request=fetch,storeFactory=getStore}={}){
- if(typeof getDeploymentContext!=='function'||typeof request!=='function'||typeof storeFactory!=='function')throw TypeError('erasure_ledger_configuration');
+export function createProductionErasureLedger({getDeploymentContext=getContext,request=fetch,storeFactory=getStore,canRecord=()=>true}={}){
+ if(typeof getDeploymentContext!=='function'||typeof request!=='function'||typeof storeFactory!=='function'||typeof canRecord!=='function')throw TypeError('erasure_ledger_configuration');
  const configured=()=>{try{const context=getDeploymentContext();return context.deploy.context==='production'&&context.deploy.published===true&&context.site.id===siteId&&context.site.url===origin;}catch{return false;}};
+ const writable=()=>{try{return canRecord()===true;}catch{return false;}};
  const guardedRequest=async(...args)=>{
   if(!configured())throw new ErasureLedgerError('erasure_ledger_unavailable');
+  const method=String(args[1]?.method??(args[0] instanceof Request?args[0].method:'GET')).toUpperCase();
+  if(!['GET','HEAD'].includes(method)&&!writable())throw new ErasureLedgerError('erasure_ledger_unavailable');
   return request(...args);
  };
  const ledger=createErasureLedger({request:guardedRequest,openStore:transport=>{
@@ -84,5 +87,7 @@ export function createProductionErasureLedger({getDeploymentContext=getContext,r
   // deploy-store fallback. Preview/local construction performs no store access.
   return storeFactory({...storeOptions,fetch:transport});
  }});
- return Object.freeze({available:configured,...ledger});
+ return Object.freeze({available:()=>configured()&&writable(),read:ledger.read,admit:value=>{
+  if(!writable())return Promise.reject(new ErasureLedgerError('erasure_ledger_unavailable'));return ledger.admit(value);
+ }});
 }

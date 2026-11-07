@@ -3,8 +3,9 @@
 This branch is building the complete content-erasure flow. It is not an enabled
 feature or a privacy-compliance claim. `workspaceContentErasureEnabled` remains
 false. The draft now has database request/consent/claim/completion states and
-an explicit atomic payload-purge store method. It has no privacy HTTP endpoint,
-privacy UI or production store access. Only invented test fixtures are purged.
+an explicit atomic payload-purge store method, server-gated privacy routes and
+privacy-history downloads. Routes remain unavailable by default; no privacy UI
+or production store access is enabled. Only invented test fixtures are purged.
 Account/Identity erasure, provider retention, hosting logs and
 backups remain distinct requirements; do not turn this document into a fixed
 deletion-period promise.
@@ -134,8 +135,24 @@ fixtures. Restoring a post-purge snapshot preserves absent payloads, denied
 content reads and completion recovery with zero external I/O. It does not prove
 that a pre-erasure snapshot, old deployment or provider backup is protected.
 
-Privacy endpoints/UI, browser recovery, full privacy-decision copies, native
-platform qualification, protection against pre-erasure restores across older
+The API exposes GET workspace erasure status and separate POST request, consent,
+withdrawal, admission and purge actions only under a server-owned Boolean flag.
+The false compiled release rejects all these routes before identity or storage
+access. Request JSON, headers and query strings cannot enable them. Enabled
+routes retain the same origin/session/identity/body/method guards as other
+private actions. The native factory uses automatic platform credentials and
+also checks the recovery hold before admission and each write transport.
+The store rechecks the hold during SQL work and after intent observation;
+saved metadata can still be read without a new admission or redaction.
+
+Account downloads include paginated request, consent, withdrawal, admission,
+intent-observation and content-redaction decisions for current members. A
+recipient who has not joined receives no privacy history. Operation references
+are included only for that member's own actions; raw external ledger records
+and credentials remain excluded. Old content is not recreated by downloading.
+
+Privacy UI, browser recovery, native platform qualification,
+protection against pre-erasure restores across older
 deployments and the operator retention decision remain unfinished. No
 existing customer record, original provider admission, consumed budget or live
 credential was erased, recreated or changed for this work.
