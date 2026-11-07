@@ -2,6 +2,7 @@ import { mountCheckout } from './checkout.mjs';
 import { mountAiReview } from './ai-review.mjs';
 import { mountOfferRecord } from './offer-record.mjs';
 import { mountAccountRecord } from './account-record.mjs';
+import { mountRevisionHistory } from './revision-history.mjs';
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const privatePath = new RegExp('^/(workspace|invitation)/(' + uuid + ')$');
 const definitions = [ ['deliverable','What you will deliver','textarea'], ['usage','Permitted uses and exclusions','textarea'], ['delivery','Delivery commitment','input'], ['revisions','Revision allowance','input'], ['price','All-in price (USD)','input'], ['terms','Payment timing and other terms','textarea'] ];
@@ -21,7 +22,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   if(!storage)try{storage=globalThis.sessionStorage;}catch{storage={getItem(){throw Error();},setItem(){throw Error();},removeItem(){throw Error();}};}
   const root = doc.getElementById('app'), state = { user:null, epoch:0, generation:0, pending:false, intent:null, workspace:null, confirmed:false, dirty:false, sourceDirty:false, draft:{}, merchantAck:null, buyerAck:null, createdWorkspaceId:null };
   let suppressAuth=1;
-  let ai=null,checkout=null,record=null,accountRecord=null;
+  let ai=null,checkout=null,record=null,accountRecord=null,revisionHistory=null;
   let renderedPath=location.pathname;
   let view, notice, session, recovery, editor, sourceEditor, quoteBox, conversationBox, invitationBox, publish, accept, discard, merchantCheck, buyerCheck, currentWorkspaceId;
   let changeBox, changeForm, changeNote, changeCheck, changeSubmit, responseCheck, changeAck=null, responseAck=null, withdrawCheck, withdrawSubmit, withdrawAck=null;
@@ -40,7 +41,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   const changeKey = () => JSON.stringify([quoteKey(),changeNote?.value]);
   const valid = () => definitions.every(([k]) => typeof state.draft[k]==='string' && state.draft[k].trim() && state.draft[k].length<=1200) && /^(0|[1-9][0-9]{0,4})(\.[0-9]{1,2})?$/.test(state.draft.price) && Number(state.draft.price)>=0.01 && Number(state.draft.price)<=10000;
   function actions() {
-    ai?.actions();checkout?.actions();record?.actions();accountRecord?.actions();
+    ai?.actions();checkout?.actions();record?.actions();accountRecord?.actions();revisionHistory?.actions();
     if(publish)publish.disabled=blocked()||!state.confirmed||state.sourceDirty||!valid()||state.merchantAck!==key()||!!state.workspace?.openChangeRequest&&responseAck!==state.workspace.openChangeRequest.id;
     if(accept){accept.disabled=blocked()||!state.confirmed||state.dirty||state.sourceDirty||!state.workspace?.sourceCurrent||state.workspace.accepted||!!state.workspace.openChangeRequest||state.buyerAck!==quoteKey();accept.hidden=state.confirmed&&state.workspace?.accepted===true;}
     if(discard)discard.disabled=state.pending||!!state.intent||!state.dirty&&!state.sourceDirty;
@@ -64,7 +65,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   accountRecord=mountAccountRecord({parent:footer,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,generation:state.generation,blocked:state.pending||!!state.intent,recovery:state.user?.readOnly===true}),load:async(path,actor)=>{const result=await api(path,undefined,actor);if(path==='me'&&result.id!==actor){retireSession();throw Error('account_changed');}return result;}});
   const check = (text, action) => { const label=h('label',undefined,'check'), input=doc.createElement('input');input.type='checkbox';input.onchange=action;label.append(input,h('span',text));return {label,input}; };
   const markEdit = () => { state.generation++;state.dirty=true;state.merchantAck=null;state.buyerAck=null;responseAck=null;actions(); };
-  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;editor=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
+  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;revisionHistory?.dispose();revisionHistory=null;editor=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
   const intentKey = user => 'scope-hosted-action-v1:'+user;
   function readIntent(user) { try { const raw=storage.getItem(intentKey(user));if(raw===null)return null;const x=JSON.parse(raw);if(raw.length>1024||Object.keys(x).sort().join(',')!=='actorId,path,requestId'||x.actorId!==user||!new RegExp('^'+uuid+'$').test(x.requestId)||!/^\/api\/v1\/(workspaces|workspaces\/[a-f0-9-]+\/(source|publish|accept|request-changes|withdraw-changes|draft|checkout(?:\/check|\/capture)?)|invitations\/[a-f0-9-]+\/join)$/.test(x.path))throw Error();return x; }catch{return{invalid:true};} }
   function persist(intent) { const raw=JSON.stringify(intent);storage.setItem(intentKey(intent.actorId),raw);if(storage.getItem(intentKey(intent.actorId))!==raw)throw Error('storage'); }
@@ -155,6 +156,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   }
   function drawSource(workspace){conversationBox.replaceChildren(h('h2','The complete conversation'));for(const message of workspace.source.messages){const card=h('article',undefined,'message');card.append(h('strong',message.role==='buyer'?'Buyer':'Creator'),h('p',message.text));conversationBox.append(card);}}
   function drawQuote(workspace){
+    revisionHistory?.dispose();revisionHistory=null;
+    const decision=doc.querySelector('#scope-buyer-decision .decision-target');if(decision)decision.textContent=decisionTarget(workspace.currentQuote);
     quoteBox.replaceChildren(h('h2',workspace.role==='buyer'?'Your exact offer':'Published offer'));
     const q=workspace.currentQuote;if(!q){quoteBox.append(h('p','No offer has been published yet.'));return;}
     quoteBox.append(h('p','REVISION '+q.revision,'eyebrow'),h('p','USD '+(q.totalCents/100).toFixed(2),'amount'));
@@ -163,8 +166,10 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     const requested=workspace.changeHistory?.find(x=>x.id===q.responseTo),base=requested&&workspace.quoteHistory.find(x=>x.revision===requested.revision);
     if(base){const changes=h('section');changes.append(h('h3','Changes in response to your request'));let count=0;for(const[k,label]of definitions)if(base.fields[k]!==q.fields[k]){count++;changes.append(h('h3',label),h('p','Requested revision: '+base.fields[k],'exact'),h('p','Creator’s response: '+q.fields[k],'exact'));}if(!count)changes.append(h('p','No offer fields changed. Publishing a response does not mean your requested changes were granted.'));if(base.sourceBinding!==q.sourceBinding)changes.append(h('p','The source conversation also changed. Read it again before deciding.'));quoteBox.append(changes);}
     if(earlier){const changes=h('details'),summary=h('summary','Changes since your earlier accepted offer');changes.append(summary);let count=0;for(const[k,label]of definitions)if(earlier.fields[k]!==q.fields[k]){count++;changes.append(h('h3',label),h('p','Earlier: '+earlier.fields[k],'exact'),h('p','Now: '+q.fields[k],'exact'));}if(!count)changes.append(h('p','The terms are unchanged. This is a new revision and needs its own acceptance.'));if(earlier.sourceBinding!==q.sourceBinding)changes.append(h('p','The source conversation changed. Read it again before deciding.'));quoteBox.append(changes);}
+    revisionHistory=mountRevisionHistory({parent:quoteBox,h,field,workspace,covered:[base?.revision,earlier?.revision],context:()=>({user:state.user?.id,confirmed:state.confirmed,workspaceId:state.workspace?.workspaceId}),onInspect:()=>{state.merchantAck=null;state.buyerAck=null;actions();}});
     quoteBox.append(h('p',workspace.openChangeRequest?'Changes requested. Acceptance is blocked until the creator publishes a response.':!workspace.sourceCurrent?'The conversation changed after this offer. A new publication is needed.':workspace.accepted?(state.user?.readOnly?'This saved revision records acceptance. Later activity is under recovery review.':'This exact revision is accepted. Payment is a separate step below.'):'This revision has not been accepted.','offer-state'));
   }
+  function decisionTarget(q){return q?'Current decision: revision '+q.revision+' · USD '+(q.totalCents/100).toFixed(2)+'.':'Wait for a published offer before deciding.';}
   function drawChanges(workspace){
     withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;
     if(!changeBox)return;
@@ -225,7 +230,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
       }
       quoteBox=h('section');quoteBox.id='scope-published-offer';right.append(quoteBox);drawQuote(workspace);
       if(workspace.role==='buyer'){
-        const review=h('section');review.id='scope-buyer-decision';review.append(h('h2','Your decision'));
+        const review=h('section');review.id='scope-buyer-decision';review.append(h('h2','Your decision'),h('p',decisionTarget(workspace.currentQuote),'decision-target'));
         const ack=check('I reviewed the full conversation and accept this exact offer and revision.',()=>{state.buyerAck=buyerCheck.checked?quoteKey():null;actions();});buyerCheck=ack.input;accept=button('Accept this revision',async()=>{if(accept.disabled)return;const q=state.workspace.currentQuote;const result=await write('workspaces/'+id+'/accept',{revision:q.revision,quoteBinding:q.binding,confirmation:'accept-exact-published-offer'});if(result)await refreshWorkspace();});review.append(ack.label,accept,h('p','Acceptance is separate from payment. Request any changes before accepting.'));right.append(review);
         changeForm=h('form');changeForm.append(h('h2','Need different terms?'));const note=field('Changes you need before accepting','textarea');changeNote=note.input;changeNote.maxLength=1200;changeNote.required=true;changeNote.oninput=()=>{state.dirty=true;state.generation++;state.buyerAck=null;changeAck=null;actions();};const confirm=check('Send this exact request for changes. This does not accept the offer.',()=>{changeAck=changeCheck.checked?changeKey():null;actions();});changeCheck=confirm.input;changeSubmit=button('Request changes',null);changeSubmit.type='submit';changeForm.append(note.label,confirm.label,changeSubmit);changeForm.onsubmit=async event=>{event.preventDefault();if(changeSubmit.disabled)return;const generation=state.generation,q=state.workspace.currentQuote;const result=await write('workspaces/'+id+'/request-changes',{revision:q.revision,quoteBinding:q.binding,note:changeNote.value,confirmation:'request-changes-to-this-offer'});if(result){if(generation===state.generation){state.dirty=false;changeNote.value='';}await refreshWorkspace();}};right.append(changeForm);
       }
