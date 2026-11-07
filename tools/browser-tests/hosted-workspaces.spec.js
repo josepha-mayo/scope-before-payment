@@ -362,8 +362,8 @@ test('signed refund through HTTP and PostgreSQL retires capture confirmation aft
   await buyer.getByRole('button',{name:'Refresh payment status',exact:true}).click();await expect(buyer.locator('.payment-state')).toHaveText('PayPal reported a payment change or conflicting update. Review the payment before starting work.');await expect(buyer.getByRole('button',{name:'Confirm sandbox payment',exact:true})).toHaveCount(0);
   const recheck=f.app.hold('/checkout/check');await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeEnabled();await buyer.getByRole('button',{name:'Check order with PayPal',exact:true}).click();await recheck.started;
   // The refund warning already exists while the new check is pending. Wait
-  // for the actual dispatch and settled controls, not the unchanged caption.
-  await expect(buyer.locator('.payment-state')).toContainText('Review the payment before starting work');expect(f.app.checkoutCounts.check).toBe(1);await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeDisabled();
+  // for the held HTTP reply and settled controls, not the unchanged caption.
+  await expect(buyer.locator('.payment-state')).toContainText('Review the payment before starting work');expect(f.app.checkoutCounts.check).toBe(2);await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeDisabled();
   recheck.release();await expect.poll(()=>f.app.checkoutCounts.check).toBe(2);await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeEnabled();
   await merchant.getByRole('button',{name:'Refresh payment status',exact:true}).click();await expect(merchant.locator('.payment-state')).toContainText('Review the payment before starting work');
   expect(f.app.checkoutCounts).toEqual({create:1,check:2,capture:1});expect(f.external).toEqual([]);await buyer.locator('#scope-payment').scrollIntoViewIfNeeded();await buyer.screenshot({path:testInfo.outputPath('authored-checkout-recovered.png'),fullPage:false});
