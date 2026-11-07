@@ -98,7 +98,8 @@ authenticated storage, AI benefit, retention or erasure.
 
 Use invented data. Automatic deletion, account erasure, a complete account
 export and production recovery/monitoring qualification remain unfinished.
-Two retained real Claude reviews establish functioning inference, not measured
+Three retained real Claude reviews establish functioning inference, including
+[one live instruction-conflict case](docs/LIVE_AI_QUALIFICATION.md), not measured
 time savings or reduced disputes. Real buyer/provider qualification, actual
 sandbox capture and registered delivery remain open.
 
