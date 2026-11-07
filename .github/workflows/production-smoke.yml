@@ -1,0 +1,36 @@
+name: Production smoke
+on:
+  schedule:
+    - cron: '47 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/production-smoke.yml'
+      - 'tools/production-smoke/**'
+permissions:
+  contents: read
+concurrency:
+  group: production-smoke
+  cancel-in-progress: false
+jobs:
+  public-boundaries:
+    if: github.repository == 'josepha-mayo/scope-before-payment'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Check deployed public page and rejection boundaries without credentials
+        run: node tools/production-smoke/check.mjs --live
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-smoke-receipt
+          path: production-smoke-receipt.json
+          if-no-files-found: warn
+          retention-days: 14

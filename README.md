@@ -89,6 +89,11 @@ an actual payment.
 
 ## Current limits
 
+The [production smoke workflow](docs/PRODUCTION_MONITORING.md) checks anonymous
+availability and access boundaries hourly, with bounded GET/HEAD requests and
+retained metadata receipts. It does not deploy code or qualify signed payments,
+authenticated storage, AI benefit, retention or erasure.
+
 Use invented data. Automatic deletion, account erasure, a complete account
 export and production recovery/monitoring qualification remain unfinished.
 Two retained real Claude reviews establish functioning inference, not measured
