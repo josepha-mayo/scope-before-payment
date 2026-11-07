@@ -84,8 +84,9 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
   }
   async function workspace(client, user, id, lock = false,allowErasureDecision=false) {
     if (!uuid(id)) fail('workspace_not_found', 404);
-    const { rows } = await client.query('SELECT * FROM scope_app.workspaces WHERE id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE' : ''), [id, user]);
+    const { rows } = await client.query('SELECT w.*,EXISTS(SELECT 1 FROM scope_app.content_erasure_completions e WHERE e.workspace_id=w.id) AS content_erased FROM scope_app.workspaces w WHERE id=$1 AND (merchant_id=$2 OR buyer_id=$2)' + (lock ? ' FOR UPDATE OF w' : ''), [id, user]);
     if (!rows[0]) fail('workspace_not_found', 404);
+    if(rows[0].content_erased&&!allowErasureDecision)fail('workspace_content_erased',410);
     if(lock&&!allowErasureDecision&&(await client.query('SELECT scope_app.content_erasure_paused($1) AS paused',[id])).rows[0].paused)fail('workspace_erasure_pending');
     return rows[0];
   }
@@ -93,6 +94,8 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
     const { rows } = await client.query('SELECT fingerprint, result FROM scope_app.operations WHERE actor_id=$1 AND request_id=$2', [user, requestId]);
     if (!rows[0]) return null;
     if (rows[0].fingerprint !== fingerprint) fail('workspace_request_conflict');
+    // A present redacted operation is never a missing operation or fresh grant.
+    if(rows[0].result===null)fail('workspace_content_erased',410);
     return rows[0].result;
   }
   async function record(client, user, input, id, kind, fingerprint, result) {
@@ -128,7 +131,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
     readDraft:drafts.readDraft,
     requestDraft:drafts.requestDraft,
     readContentErasure:erasure.readContentErasure,requestContentErasure:erasure.requestContentErasure,
-    consentContentErasure:erasure.consentContentErasure,withdrawContentErasure:erasure.withdrawContentErasure,admitContentErasure:erasure.admitContentErasure,
+    consentContentErasure:erasure.consentContentErasure,withdrawContentErasure:erasure.withdrawContentErasure,admitContentErasure:erasure.admitContentErasure,purgeContentErasure:erasure.purgeContentErasure,
     async create(input) {
       const invited = Object.hasOwn(input || {}, 'buyerEmail'), named = Object.hasOwn(input || {}, 'projectName'), keys = [invited ? 'buyerEmail' : 'buyerId', 'messages', ...(named ? ['projectName'] : [])];
       request(input, keys); input = snapshot(input); request(input, keys);
@@ -152,7 +155,7 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
     },
     async list() {
       const user = await actor();
-      return transaction(async client => (await client.query('SELECT id, project_name, merchant_id, current_revision, current_source_version FROM scope_app.workspaces WHERE merchant_id=$1 OR buyer_id=$1 ORDER BY created_at DESC, id LIMIT 100', [user])).rows.map(w => ({ workspaceId: w.id, projectName: w.project_name, role: w.merchant_id === user ? 'merchant' : 'buyer', currentRevision: w.current_revision, sourceVersion: w.current_source_version })), true);
+      return transaction(async client => (await client.query('SELECT id, project_name, merchant_id, current_revision, current_source_version FROM scope_app.workspaces w WHERE (merchant_id=$1 OR buyer_id=$1) AND NOT EXISTS(SELECT 1 FROM scope_app.content_erasure_completions e WHERE e.workspace_id=w.id) ORDER BY created_at DESC, id LIMIT 100', [user])).rows.map(w => ({ workspaceId: w.id, projectName: w.project_name, role: w.merchant_id === user ? 'merchant' : 'buyer', currentRevision: w.current_revision, sourceVersion: w.current_source_version })), true);
     },
     async read(id) {
       const user = await actor();
@@ -253,8 +256,9 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
       if (!uuid(id)) fail('workspace_not_found', 404);
       const current = await principal();
       return transaction(async client => {
-        const row = (await client.query('SELECT w.project_name,w.merchant_id,w.buyer_id,i.recipient_email,i.expires_at,r.created_at AS revoked_at,i.expires_at>now() AND r.workspace_id IS NULL AS active FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id LEFT JOIN scope_app.invitation_revocations r USING(workspace_id) WHERE i.workspace_id=$1', [id])).rows[0];
+        const row = (await client.query('SELECT w.project_name,w.merchant_id,w.buyer_id,i.recipient_email,i.expires_at,r.created_at AS revoked_at,i.expires_at>now() AND r.workspace_id IS NULL AS active,EXISTS(SELECT 1 FROM scope_app.content_erasure_completions e WHERE e.workspace_id=w.id) AS content_erased FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id LEFT JOIN scope_app.invitation_revocations r USING(workspace_id) WHERE i.workspace_id=$1', [id])).rows[0];
         if (!row || row.merchant_id !== current.id && row.buyer_id !== current.id && (row.revoked_at || !current.emailVerified || current.email !== row.recipient_email || row.buyer_id !== null)) fail('workspace_not_found', 404);
+        if(row.content_erased)fail('workspace_content_erased',410);
         return { workspaceId: id, projectName: row.project_name, joined: row.buyer_id === current.id, revoked: !!row.revoked_at, active: row.active, canJoin: row.active && row.buyer_id === null && current.id !== row.merchant_id && current.emailVerified && current.email === row.recipient_email, expiresAt: row.expires_at.toISOString() };
       }, true);
     },
@@ -286,7 +290,8 @@ export function createWorkspaceStore({ pool, getPrincipal, draftProvider, checko
       return transaction(async client => {
         const row = (await client.query('SELECT workspace_id,kind,result FROM scope_app.operations WHERE actor_id=$1 AND request_id=$2', [user, requestId])).rows[0];
         if (!row) fail('workspace_operation_not_found', 404);
-        await workspace(client, user, row.workspace_id);
+        await workspace(client, user, row.workspace_id,false,true);
+        if(row.result===null)return {workspaceId:row.workspace_id,requestId,kind:row.kind,contentErased:true,operationRetained:true};
         return row.kind==='draft' ? drafts.status(client,user,row.workspace_id,row.result.draftId) : row.kind.startsWith('checkout-') ? checkout.status(client,user,row.workspace_id) : row.kind.startsWith('erasure-')?erasure.status(client,user,row.workspace_id,row.result.erasureRequestId):row.result;
       }, true);
     },

@@ -1,20 +1,21 @@
 import {randomUUID} from 'node:crypto';
 
-// Admission state only. The release is disabled; a recorded intent does not
-// erase content. Purge and restored-content guards are separate required work.
+// Disabled release. Admission alone never erases content. The explicit purge
+// checks the original external intent, then removes payloads in one transaction.
+// Protection of pre-erasure restored content remains separate required work.
 export function createContentErasureMethods({transaction,principal,workspace,lockActor,previous,record,request,snapshot,fingerprintFor,fail,enabled,ledger,requestTtlMs=86400000}){
  if(typeof enabled!=='boolean'||!Number.isInteger(requestTtlMs)||requestTtlMs<100||requestTtlMs>86400000)throw TypeError('content_erasure_configuration');
  const available=()=>{try{return enabled&&typeof ledger?.admit==='function'&&typeof ledger?.read==='function'&&(typeof ledger.available!=='function'||ledger.available()===true);}catch{return false;}};
  const needEnabled=()=>{if(!enabled)fail('workspace_erasure_unavailable',503);};
  async function status(client,user,id,requestId=null){
-   await workspace(client,user,id);const r=(await client.query('SELECT r.*,d.created_at AS withdrawn_at FROM scope_app.content_erasure_requests r LEFT JOIN scope_app.content_erasure_withdrawals d ON d.request_id=r.id WHERE r.workspace_id=$1 AND ($2::uuid IS NULL OR r.id=$2) ORDER BY r.created_at DESC,r.id DESC LIMIT 1',[id,requestId])).rows[0];
+   await workspace(client,user,id,false,true);const r=(await client.query('SELECT r.*,d.created_at AS withdrawn_at FROM scope_app.content_erasure_requests r LEFT JOIN scope_app.content_erasure_withdrawals d ON d.request_id=r.id WHERE r.workspace_id=$1 AND ($2::uuid IS NULL OR r.id=$2) ORDER BY EXISTS(SELECT 1 FROM scope_app.content_erasure_claims c WHERE c.request_id=r.id) DESC,(d.request_id IS NULL AND r.expires_at>clock_timestamp()) DESC,r.created_at DESC,r.id DESC LIMIT 1',[id,requestId])).rows[0];
   const eligible=(await client.query('SELECT scope_app.content_erasure_eligible($1) AS eligible',[id])).rows[0].eligible;
   if(!r)return {workspaceId:id,available:available(),eligible,request:null,contentErased:false};
   const consents=(await client.query('SELECT actor_id FROM scope_app.content_erasure_consents WHERE request_id=$1',[r.id])).rows.map(x=>x.actor_id);
-  const c=(await client.query('SELECT c.*,l.claim_id IS NOT NULL AS recorded,scope_app.content_erasure_intent(c.id) AS intent,r.expires_at>clock_timestamp() AS active FROM scope_app.content_erasure_claims c JOIN scope_app.content_erasure_requests r ON r.id=c.request_id LEFT JOIN scope_app.content_erasure_ledger_receipts l ON l.claim_id=c.id WHERE c.request_id=$1',[r.id])).rows[0];
+  const c=(await client.query('SELECT c.*,l.claim_id IS NOT NULL AS recorded,d.created_at AS erased_at,scope_app.content_erasure_intent(c.id) AS intent FROM scope_app.content_erasure_claims c LEFT JOIN scope_app.content_erasure_ledger_receipts l ON l.claim_id=c.id LEFT JOIN scope_app.content_erasure_completions d ON d.claim_id=c.id WHERE c.request_id=$1',[r.id])).rows[0];
   const active=(await client.query('SELECT $1::timestamptz>clock_timestamp() AS active',[r.expires_at])).rows[0].active;
   const both=consents.includes(r.merchant_id)&&(r.buyer_id===null||consents.includes(r.buyer_id));
-  return {workspaceId:id,available:available(),eligible,contentErased:false,request:{id:r.id,sourceVersion:r.source_version,sourceBinding:r.source_binding,revision:r.revision,buyerJoined:r.buyer_id!==null,createdAt:r.created_at.toISOString(),expiresAt:r.expires_at.toISOString(),ownConsent:consents.includes(user),allMembersConsented:both,state:c?c.recorded?'recorded_pending_purge':'admitted_pending_ledger':r.withdrawn_at?'withdrawn':!active?'expired':both?'ready_to_admit':'awaiting_consent',paused:!!c||!r.withdrawn_at&&active,claim:c?{id:c.id,intent:c.intent,recorded:c.recorded,createdAt:c.created_at.toISOString()}:null}};
+  return {workspaceId:id,available:available(),eligible,contentErased:!!c?.erased_at,...(c?.erased_at?{erasedAt:c.erased_at.toISOString()}:{}),request:{id:r.id,sourceVersion:r.source_version,sourceBinding:r.source_binding,revision:r.revision,buyerJoined:r.buyer_id!==null,createdAt:r.created_at.toISOString(),expiresAt:r.expires_at.toISOString(),ownConsent:consents.includes(user),allMembersConsented:both,state:c?c.erased_at?'content_erased':c.recorded?'recorded_pending_purge':'admitted_pending_ledger':r.withdrawn_at?'withdrawn':!active?'expired':both?'ready_to_admit':'awaiting_consent',paused:!!c||!r.withdrawn_at&&active,claim:c?{id:c.id,intent:c.intent,recorded:c.recorded,createdAt:c.created_at.toISOString()}:null}};
  }
  async function withAction(id,input,keys,kind,action){
   needEnabled();request(input,keys);input=snapshot(input);request(input,keys);
@@ -25,6 +26,7 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
    // paused. This path cannot mutate source/offer/financial tables.
    const saved=await previous(client,user,input.requestId,fingerprint);
    if(saved)return {view:await status(client,user,id,saved.erasureRequestId),dispatch:null,actorId:user};
+   if(w.content_erased)fail('workspace_content_erased',410);
    const result=await action(client,w,user,input);
    await record(client,user,input,id,kind,fingerprint,result.saved);
    return {view:await status(client,user,id,result.saved.erasureRequestId),dispatch:result.dispatch||null,actorId:user};
@@ -46,6 +48,41 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
  return {
   status,
   async readContentErasure(id){needEnabled();const user=(await principal()).id;return observation(await transaction(client=>status(client,user,id),true));},
+  async purgeContentErasure(id,input){
+   needEnabled();const keys=['erasureRequestId','erasureClaimId','confirmation'];request(input,keys);input=snapshot(input);request(input,keys);
+   if(input.confirmation!=='erase-the-admitted-workspace-content')fail('workspace_erasure_confirmation_required',422);
+   const user=(await principal()).id,fingerprint=fingerprintFor({kind:'erasure-purge',workspaceId:id,input});
+   const before=await transaction(async client=>{
+    await workspace(client,user,id,false,true);const saved=await previous(client,user,input.requestId,fingerprint);
+    if(saved)return {saved:true,view:await status(client,user,id,saved.erasureRequestId)};
+    if(!available())fail('workspace_erasure_unavailable',503);
+    if(typeof input.erasureRequestId!=='string'||!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(input.erasureRequestId))fail('workspace_request_invalid',422);
+    const view=await status(client,user,id,input.erasureRequestId);
+    if(view.contentErased)fail('workspace_content_erased',410);
+    if(!view.request?.claim||view.request.claim.id!==input.erasureClaimId)fail('workspace_erasure_claim_required');
+    return {saved:false,view};
+   },true);
+   if(before.saved)return before.view;
+   // Read the original key only. Missing/unknown/conflicting storage never
+   // authorizes re-admission, a replacement claim, or partial redaction.
+   let observed;try{observed=await ledger.read(id);}catch{fail('workspace_erasure_ledger_unconfirmed',503);}
+   if(!observed||fingerprintFor(observed)!==fingerprintFor(before.view.request.claim.intent))fail('workspace_erasure_ledger_unconfirmed',503);
+   const result=await withAction(id,input,keys,'erasure-purge',async(client,w,actor,x)=>{
+    const c=(await client.query('SELECT id,request_id,scope_app.content_erasure_intent(id) AS intent FROM scope_app.content_erasure_claims WHERE workspace_id=$1 AND id=$2 AND request_id=$3',[id,x.erasureClaimId,x.erasureRequestId])).rows[0];
+    if(!c||fingerprintFor(c.intent)!==fingerprintFor(observed))fail('workspace_erasure_claim_required');
+    await client.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2) ON CONFLICT(claim_id) DO NOTHING',[c.id,observed]);
+    await client.query('INSERT INTO scope_app.content_erasure_completions(claim_id,workspace_id,request_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4,$5)',[c.id,id,c.request_id,actor,x.requestId]);
+    await client.query('UPDATE scope_app.workspaces SET project_name=NULL WHERE id=$1',[id]);
+    await client.query('UPDATE scope_app.sources SET messages=NULL WHERE workspace_id=$1 AND messages IS NOT NULL',[id]);
+    await client.query('UPDATE scope_app.quotes SET fields=NULL,total_cents=NULL,currency=NULL WHERE workspace_id=$1 AND (fields IS NOT NULL OR total_cents IS NOT NULL OR currency IS NOT NULL)',[id]);
+    await client.query('UPDATE scope_app.invitations SET recipient_email=NULL WHERE workspace_id=$1 AND recipient_email IS NOT NULL',[id]);
+    await client.query('UPDATE scope_app.change_requests SET note=NULL WHERE workspace_id=$1 AND note IS NOT NULL',[id]);
+    await client.query('UPDATE scope_app.ai_claims SET request_json=NULL WHERE workspace_id=$1 AND request_json IS NOT NULL',[id]);
+    await client.query('UPDATE scope_app.ai_receipts r SET raw_text=NULL,usage=NULL FROM scope_app.ai_claims c WHERE c.id=r.claim_id AND c.workspace_id=$1 AND (r.raw_text IS NOT NULL OR r.usage IS NOT NULL)',[id]);
+    await client.query("UPDATE scope_app.operations SET result=NULL WHERE workspace_id=$1 AND kind NOT LIKE 'erasure-%' AND result IS NOT NULL",[id]);
+    return {saved:{workspaceId:id,erasureRequestId:c.request_id,erasureClaimId:c.id}};
+   });return result.view;
+  },
   async requestContentErasure(id,input){
    const result=await withAction(id,input,['sourceVersion','sourceBinding','revision','buyerJoined','confirmation'],'erasure-request',async(client,w,user,x)=>{
     if(!available())fail('workspace_erasure_unavailable',503);

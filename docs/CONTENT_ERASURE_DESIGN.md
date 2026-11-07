@@ -2,8 +2,9 @@
 
 This branch is building the complete content-erasure flow. It is not an enabled
 feature or a privacy-compliance claim. `workspaceContentErasureEnabled` remains
-false. The draft now has database request/consent/claim states and server-store
-methods, but no privacy HTTP endpoint, UI, production store access or deletion.
+false. The draft now has database request/consent/claim/completion states and
+an explicit atomic payload-purge store method. It has no privacy HTTP endpoint,
+privacy UI or production store access. Only invented test fixtures are purged.
 Account/Identity erasure, provider retention, hosting logs and
 backups remain distinct requirements; do not turn this document into a fixed
 deletion-period promise.
@@ -91,7 +92,7 @@ require the matching privacy kind, workspace and exact result metadata; an old
 create or publish operation cannot stand in for a privacy decision. No network write precedes
 the claim commit; duplicate actions and saved-status reads never re-admit it.
 Payment history and unresolved AI remain review exceptions, not permission to
-discard their evidence. This stage does not redact any payload or claim erasure.
+discard their evidence. Admission itself does not redact any payload.
 The owned restore drill also checks that an admitted request stays paused and
 that replaying its original operation makes no new external ledger write. This
 is admission recovery, not proof of erased-content protection after restore.
@@ -100,8 +101,38 @@ The public HTTP create boundary now requires an email invitation. Direct buyer
 UUID assignment remains a trusted-server fixture path and is not accepted from
 HTTP JSON, preserving the separate join decision for member-consent flows.
 
-Actual PostgreSQL redaction, erasure-aware copies and owned restore/read-fence
-behavior, privacy endpoints/UI, browser recovery, native platform qualification
-and the operator retention decision remain unfinished. No
+The thirteenth additive migration permits one-way null redaction of project
+labels, all conversation versions, every offer's text/amount/currency, invitation
+email, buyer notes, AI request/result/usage and non-privacy operation responses.
+Original IDs, bindings, hashes, timestamps, decisions, claims and quota rows are
+retained. Existing immutable triggers remain active: only the listed payload
+columns can become null under the original claim and matching ledger receipt.
+Ordinary null inserts and content resurrection remain rejected. A deferred
+completion constraint checks every payload copy; skipping even one table rolls
+back the entire transition. Privacy operation metadata remains immutable.
+
+Purge requires a separate explicit confirmation and fresh matching read of the
+original external intent, outside the SQL transaction. Missing, unavailable or
+conflicting storage does not authorize redaction or re-admission. A committed
+completion and its original operation recover without dispatch or another
+ledger read. A lost commit reply is not reported as successful deletion.
+
+Completed workspaces disappear from ordinary workspace lists/pages. Direct
+content, draft, invitation and checkout reads return a stable content-erased
+error for members; unknown users still receive no membership disclosure.
+Already-issued account-copy cursors read the redacted payload values rather
+than an earlier content snapshot. Operation status returns minimal retained
+metadata; replay of a redacted create response cannot create a second workspace.
+An old AI source claim continues to block fresh authority in another workspace.
+These are current-database protections, not erased-content restore protection.
+
+The owned restore drill checks both unpurged admission state and already-purged
+fixtures. Restoring a post-purge snapshot preserves absent payloads, denied
+content reads and completion recovery with zero external I/O. It does not prove
+that a pre-erasure snapshot, old deployment or provider backup is protected.
+
+Privacy endpoints/UI, browser recovery, full privacy-decision copies, native
+platform qualification, protection against pre-erasure restores across older
+deployments and the operator retention decision remain unfinished. No
 existing customer record, original provider admission, consumed budget or live
 credential was erased, recreated or changed for this work.

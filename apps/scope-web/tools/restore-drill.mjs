@@ -140,7 +140,7 @@ async function main(){
   receipt.checks.privateApplicationReadRestored=true;receipt.checks.postBackupClaimLossDemonstrated=true;receipt.checks.recoveryFencePreventsProviderReplay=true;
 
   phase='restored_erasure_admission';
-  const admitted=(await target.query('SELECT id,workspace_id,request_id,actor_id,operation_request_id FROM scope_app.content_erasure_claims ORDER BY created_at,id LIMIT 1')).rows[0];
+  const admitted=(await target.query('SELECT c.id,c.workspace_id,c.request_id,c.actor_id,c.operation_request_id FROM scope_app.content_erasure_claims c WHERE NOT EXISTS(SELECT 1 FROM scope_app.content_erasure_completions d WHERE d.claim_id=c.id) ORDER BY c.created_at,c.id LIMIT 1')).rows[0];
   assert.ok(admitted,'An admitted erasure fixture must survive the restore');
   let ledgerWrites=0;
   const privacy=createWorkspaceStore({pool:target,getPrincipal:async()=>principal(admitted.actor_id),contentErasureEnabled:true,
@@ -151,8 +151,18 @@ async function main(){
   assert.equal(replay.request.claim.id,admitted.id);assert.equal(replay.request.paused,true);assert.equal(replay.contentErased,false);assert.equal(replay.ledgerObservation,'absent');
   assert.equal((await privacy.operationStatus(admitted.operation_request_id)).request.claim.id,admitted.id);assert.equal(ledgerWrites,0);
   receipt.checks.restoredErasureAdmissionPaused=true;receipt.checks.restoredErasureReplayDoesNotRedispatch=true;
-  // This checks admission state only. No fixture content has been erased, and
+  // This checks admission state only. This admission fixture is not erased, and
   // protecting a pre-erasure snapshot from private reads is still separate work.
+
+  phase='restored_completed_erasure';
+  const completed=(await target.query('SELECT claim_id,workspace_id,request_id,actor_id,operation_request_id FROM scope_app.content_erasure_completions ORDER BY created_at,claim_id LIMIT 1')).rows[0];assert.ok(completed);
+  let erasureIO=0;const erasedStore=createWorkspaceStore({pool:target,getPrincipal:async()=>principal(completed.actor_id),contentErasureEnabled:true,
+    erasureLedger:{read:async()=>{erasureIO++;throw Error();},admit:async()=>{erasureIO++;throw Error();}}});
+  await assert.rejects(erasedStore.read(completed.workspace_id),e=>e.code==='workspace_content_erased');
+  assert.equal((await target.query('SELECT scope_app.content_erasure_payloads_absent($1) AS absent',[completed.workspace_id])).rows[0].absent,true);
+  const erasedReplay=await erasedStore.purgeContentErasure(completed.workspace_id,{requestId:completed.operation_request_id,erasureRequestId:completed.request_id,erasureClaimId:completed.claim_id,confirmation:'erase-the-admitted-workspace-content'});
+  assert.equal(erasedReplay.contentErased,true);assert.equal((await erasedStore.operationStatus(completed.operation_request_id)).contentErased,true);assert.equal(erasureIO,0);
+  receipt.checks.completedErasurePayloadsAbsentAfterRestore=true;receipt.checks.restoredPurgeReplayHasNoExternalIO=true;
 
   phase='restored_immutability';
   const actualCheck=(await target.query("SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid='scope_app.checkout_calls'::regclass AND conname='checkout_calls_check'")).rows[0].definition;
@@ -162,7 +172,7 @@ async function main(){
     assert.equal(result,ordinal>=1&&ordinal<=4&&(kind==='check'||ordinal===1));
   }
   receipt.checks.restoredOrdinalPredicateDecisions=32;
-  const critical=['sources','quotes','acceptances','operations','checkout_attempts','checkout_calls','checkout_receipts','ai_claims','ai_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts','invitation_revocations','content_erasure_requests','content_erasure_consents','content_erasure_withdrawals','content_erasure_claims','content_erasure_ledger_receipts'];
+  const critical=['sources','quotes','acceptances','operations','checkout_attempts','checkout_calls','checkout_receipts','ai_claims','ai_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts','invitation_revocations','content_erasure_requests','content_erasure_consents','content_erasure_withdrawals','content_erasure_claims','content_erasure_ledger_receipts','content_erasure_completions'];
   const c=await target.connect();
   try{for(const table of critical){
     assert.ok(before.data.find(t=>t.table===table)?.rows>0,'Critical fixture must be populated: '+table);
