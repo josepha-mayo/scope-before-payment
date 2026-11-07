@@ -13,6 +13,54 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+test('sign-out clears private header and panels before a held workspace reply can arrive',async({browser},testInfo)=>{
+ const f=await fixture(browser);try{
+  const page=await f.page('creator'),id=await create(page,'Private sign-out qualification');
+  const held=f.app.hold('/api/v1/workspaces/'+id,{method:'GET'});await page.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await held.started;
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your private workspace',exact:true})).toBeVisible();
+  held.release();await page.waitForLoadState('networkidle');
+  await expect(page.getByText('creator@invented.example',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Sign out',exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Private sign-out qualification',exact:true})).toHaveCount(0);await expect(page.getByRole('heading',{name:'The complete conversation',exact:true})).toHaveCount(0);
+  await expect(page.getByText('Your account data',{exact:true})).toBeHidden();expect((await page.request.get(f.app.origin+'/api/v1/me')).status()).toBe(401);
+  expect(f.app.counts.publish).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
+  await testInfo.attach('signed-out-private-screen-authored',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+ }finally{await f.close();}
+});
+
+test('a late dashboard list cannot repopulate the new-commission form or change its unsaved fields',async({browser})=>{
+ const f=await fixture(browser);try{
+  const held=f.app.hold('/api/v1/workspaces',{method:'GET'}),page=await f.page('creator');await held.started;
+  await page.getByRole('button',{name:'New commission',exact:true}).click();await page.getByLabel('Project name',{exact:true}).fill('Unsent new commission');await page.getByLabel('Message',{exact:true}).nth(0).fill('An invented unsent draft.');
+  held.release();await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('heading',{name:'Bring the conversation.',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Your workspaces',exact:true})).toHaveCount(0);await expect(page.getByRole('heading',{name:'Invitations for you',exact:true})).toHaveCount(0);
+  await expect(page.getByLabel('Project name',{exact:true})).toHaveValue('Unsent new commission');await expect(page.getByLabel('Message',{exact:true}).nth(0)).toHaveValue('An invented unsent draft.');expect(f.app.counts.create).toBe(0);
+  await page.getByRole('button',{name:'Cancel new workspace',exact:true}).click();await expect(page.getByRole('heading',{name:'Your workspaces',exact:true})).toBeVisible();expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('unconfirmed SDK logout clears private UI without claiming success and retries only on an explicit action',async({browser})=>{
+ const f=await fixture(browser);try{
+  const page=await f.page('creator','/?testLogout=fail-once');await create(page,'Unconfirmed sign-out qualification');
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Sign-out could not be confirmed.',exact:true})).toBeVisible();await expect(page.getByText('creator@invented.example',{exact:true})).toHaveCount(0);
+  await expect(page.getByRole('heading',{name:'Unconfirmed sign-out qualification',exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Sign in',exact:true})).toHaveCount(0);await expect(page.getByText('Your account data',{exact:true})).toBeHidden();
+  expect((await page.request.get(f.app.origin+'/api/v1/me')).status()).toBe(200);expect(await page.evaluate(()=>globalThis.scopeFixtureAuthEvents.filter(e=>e==='logout-unconfirmed').length)).toBe(1);
+  await page.getByRole('button',{name:'Retry sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your private workspace',exact:true})).toBeVisible();expect((await page.request.get(f.app.origin+'/api/v1/me')).status()).toBe(401);
+  expect(await page.evaluate(()=>globalThis.scopeFixtureAuthEvents.filter(e=>e==='logout').length)).toBe(1);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('sign-out preserves a lost AI action reference for the original account and recovery never sends it again',async({browser})=>{
+ const f=await fixture(browser);try{
+  const page=await f.page('creator');await create(page);const disclosure='Send excerpts from this saved conversation to Anthropic through Netlify for AI review. Scope privately retains this request and its result.';
+  await page.getByLabel(disclosure,{exact:true}).check();f.app.lose('/draft');await page.getByRole('button',{name:'Review saved conversation with AI',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();
+  const key='scope-hosted-action-v1:'+f.app.users.creator.id,before=await page.evaluate(key=>sessionStorage.getItem(key),key);expect(JSON.parse(before).path).toMatch(/\/draft$/);expect(f.app.counts.ai).toBe(1);
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your private workspace',exact:true})).toBeVisible();expect(await page.evaluate(key=>sessionStorage.getItem(key),key)).toBe(before);
+  await page.getByLabel('Email address',{exact:true}).fill('creator@invented.example');await page.getByLabel('Password',{exact:true}).fill('fixture-password-123');await page.getByRole('button',{name:'Sign in',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();
+  await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByText('Suggestions saved · review required',{exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeHidden();
+  expect(await page.evaluate(key=>sessionStorage.getItem(key),key)).toBe(null);expect(f.app.counts.ai).toBe(1);expect(f.app.counts.publish).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('unused invitation revocation survives a lost reply and removes a stale recipient join without losing creator edits',async({browser},testInfo)=>{
  const f=await fixture(browser);try{
   const merchant=await f.page('creator'),id=await create(merchant),path=new URL(await merchant.getByLabel('Private review link').inputValue()).pathname;

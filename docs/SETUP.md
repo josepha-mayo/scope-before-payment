@@ -119,6 +119,17 @@ probe rejection are not evidence of an actual registered delivery or capture.
 
 ## Data and recovery
 
+The source clears private account/workspace UI as soon as an allowed sign-out
+starts, retires older view reads and uses the existing Identity SDK logout.
+If the SDK rejects, the cleared screen says sign-out is unconfirmed and offers
+an explicit retry; it does not claim the remote session ended. Saved action
+references remain for their original account and recover through status GETs
+after sign-in. This client cleanup does not prove immediate revocation of an
+already-issued access JWT or erase stored records. Authored browser tests also
+hold a dashboard read while opening a new commission, so a removed list panel
+cannot repopulate the new form. These source changes are not yet deployed under
+the shared-credit hold; real Identity logout still needs deployment verification.
+
 The app discloses what it stores in its footer. Editing and logout do not erase
 immutable history. Automatic retention/deletion and erasure remain unfinished.
 Do not use real customer data while those controls remain unqualified.
