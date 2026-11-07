@@ -46,6 +46,11 @@ test('unexpected SDK and database errors never expose private implementation det
   const r = await auth(request()); assert.equal(r.status, 503); assert.equal((await r.json()).error.code, 'authentication_unavailable');
   const f = fixture(), db = await f.handler(request()); assert.equal(db.status, 503); assert.equal((await db.json()).error.code, 'service_unavailable'); assert.equal(f.pools(), 1);
 });
+
+test('the public create endpoint requires an invitation instead of assigning an arbitrary buyer account',async()=>{
+ for(const body of [{requestId:id,buyerId:id,messages:[]},{requestId:id,buyerId:id,buyerEmail:'buyer@invented.example',messages:[]},{requestId:id,messages:[]}])await rejected(fixture(),request('workspaces',{method:'POST',headers,body:JSON.stringify(body)}),422,'workspace_invitation_required');
+ const f=fixture();const r=await f.handler(request('workspaces',{method:'POST',headers,body:JSON.stringify({requestId:id,buyerEmail:'buyer@invented.example',messages:[]})}));assert.equal(r.status,503);assert.equal(f.pools(),1);
+});
 test('a session precondition cannot impersonate another verified account or submit its stale form', async () => {
   const f = fixture(); await rejected(f, request('workspaces', {method:'POST',headers:{...headers,'X-Scope-Session':'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'},body:'{}'}),409,'session_changed');
 });

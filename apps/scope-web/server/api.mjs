@@ -72,6 +72,9 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
       if(request.method==='POST'&&!writable())reject('recovery_read_only',503);
       const input = request.method === 'POST' ? await readBody(request, bodyTimeoutMs) : null;
       if(request.method==='POST'&&!writable())reject('recovery_read_only',503);
+      // Public callers must invite a verified recipient who separately joins.
+      // The store's direct-ID setup remains for trusted server/owned fixtures.
+      if(target.action==='collection'&&request.method==='POST'&&(!input||!Object.hasOwn(input,'buyerEmail')||Object.hasOwn(input,'buyerId')))reject('workspace_invitation_required',422);
       const store = createWorkspaceStore({ pool: await getPool(), getPrincipal: async () => user, draftProvider, checkoutProvider });
       let result;
       switch (target.action) {

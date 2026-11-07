@@ -147,7 +147,7 @@ async function main(){
     assert.equal(result,ordinal>=1&&ordinal<=4&&(kind==='check'||ordinal===1));
   }
   receipt.checks.restoredOrdinalPredicateDecisions=32;
-  const critical=['sources','quotes','acceptances','operations','checkout_attempts','checkout_calls','checkout_receipts','ai_claims','ai_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts','invitation_revocations'];
+  const critical=['sources','quotes','acceptances','operations','checkout_attempts','checkout_calls','checkout_receipts','ai_claims','ai_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts','invitation_revocations','content_erasure_requests','content_erasure_consents','content_erasure_withdrawals','content_erasure_claims','content_erasure_ledger_receipts'];
   const c=await target.connect();
   try{for(const table of critical){
     assert.ok(before.data.find(t=>t.table===table)?.rows>0,'Critical fixture must be populated: '+table);

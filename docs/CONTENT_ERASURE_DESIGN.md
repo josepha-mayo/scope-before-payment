@@ -2,8 +2,9 @@
 
 This branch is building the complete content-erasure flow. It is not an enabled
 feature or a privacy-compliance claim. `workspaceContentErasureEnabled` remains
-false. There is no erasure endpoint, UI, production store access or deletion in
-this foundation. Account/Identity erasure, provider retention, hosting logs and
+false. The draft now has database request/consent/claim states and server-store
+methods, but no privacy HTTP endpoint, UI, production store access or deletion.
+Account/Identity erasure, provider retention, hosting logs and
 backups remain distinct requirements; do not turn this document into a fixed
 deletion-period promise.
 
@@ -79,8 +80,23 @@ Follow the [Netlify Blobs documentation](https://docs.netlify.com/build/data-and
    restoring private access. GET recovery itself must not silently perform a
    destructive purge. Older code cannot be assumed to consult a new ledger.
 
-These steps, their races, actual PostgreSQL redaction, owned restore behavior,
-browser recovery, native platform qualification and the operator retention
-decision remain unfinished. The adapter and its tests do not close them. No
+The twelfth additive migration introduces immutable request, consent,
+withdrawal, claim and external-ledger observation rows. Ordinary writes and
+invitation joining pause during active review and remain paused after a claim.
+An unadmitted request expires after24hours; a committed claim does not expire or
+become replaceable. Both current joined members must consent before a separate
+irreversible admission. An unjoined invitation has only the creator as member.
+Every decision links to its original operation fence. No network write precedes
+the claim commit; duplicate actions and saved-status reads never re-admit it.
+Payment history and unresolved AI remain review exceptions, not permission to
+discard their evidence. This stage does not redact any payload or claim erasure.
+
+The public HTTP create boundary now requires an email invitation. Direct buyer
+UUID assignment remains a trusted-server fixture path and is not accepted from
+HTTP JSON, preserving the separate join decision for member-consent flows.
+
+Actual PostgreSQL redaction, erasure-aware copies and owned restore/read-fence
+behavior, privacy endpoints/UI, browser recovery, native platform qualification
+and the operator retention decision remain unfinished. No
 existing customer record, original provider admission, consumed budget or live
 credential was erased, recreated or changed for this work.
