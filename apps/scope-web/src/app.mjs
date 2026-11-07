@@ -198,16 +198,21 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     try{const current=await api('me',undefined,actor);if(epoch!==state.epoch||state.user?.id!==actor)return false;if(current.id!==actor){retireSession();return false;}if(current.readOnly===true){state.user.readOnly=true;actions();}return true;}
     catch(error){if(error.status===401&&epoch===state.epoch&&state.user?.id===actor){retireSession();return false;}throw error;}
   }
+  async function readCurrentWorkspace(id,actor,epoch){
+    if(!await confirmReader(actor,epoch))return null;
+    const workspace=await api('workspaces/'+id,undefined,actor);
+    return await confirmReader(actor,epoch)?workspace:null;
+  }
   async function refreshWorkspace(){
     if(!currentWorkspaceId)return;const id=currentWorkspaceId,e=state.epoch,actor=state.user?.id;
     state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say('Reading the saved offer and checking your account…');
-    try{if(!await confirmReader(actor,e))return;const workspace=await api('workspaces/'+id,undefined,actor);if(!await confirmReader(actor,e)||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;changeAck=null;responseAck=null;drawSource(workspace);drawQuote(workspace);drawChanges(workspace);if(ai)void ai.refresh();if(checkout)void checkout.refresh();if(invitationBox)invitationBox.querySelector('h2').textContent=workspace.buyerJoined?'Buyer has joined':'Invite the buyer';actions();say(state.dirty||state.sourceDirty?'Current saved offer loaded. Your unsaved text is preserved; review it again before publishing.':'Current saved offer loaded.');}
+    try{const workspace=await readCurrentWorkspace(id,actor,e);if(!workspace||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;changeAck=null;responseAck=null;drawSource(workspace);drawQuote(workspace);drawChanges(workspace);if(ai)void ai.refresh();if(checkout)void checkout.refresh();if(invitationBox)invitationBox.querySelector('h2').textContent=workspace.buyerJoined?'Buyer has joined':'Invite the buyer';actions();say(state.dirty||state.sourceDirty?'Current saved offer loaded. Your unsaved text is preserved; review it again before publishing.':'Current saved offer loaded.');}
     catch(error){if(e===state.epoch){try{if(!await confirmReader(actor,e))return;}catch{/* A failed identity read cannot confirm this view. */}if(e!==state.epoch)return;state.confirmed=false;state.merchantAck=null;state.buyerAck=null;actions();say(error.message||'Saved status could not be confirmed.');}}
   }
   async function openWorkspace(id){
     renderedPath='/workspace/'+id;
     const e=state.epoch,actor=state.user?.id;clearView();view.append(h('p','Loading private workspace…'));
-    try{const workspace=await api('workspaces/'+id);if(e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;currentWorkspaceId=id;clearDirty();clearView();
+    try{const workspace=await readCurrentWorkspace(id,actor,e);if(!workspace||e!==state.epoch||actor!==state.user?.id)return;state.workspace=workspace;state.confirmed=true;currentWorkspaceId=id;clearDirty();clearView();
       const title=h('div',undefined,'workspace-title');title.append(link('All workspaces','/'),h('p',workspace.role==='merchant'?'CREATOR WORKSPACE':'BUYER REVIEW','eyebrow'),h('h1',workspace.projectName||'Commission'));
       title.append(button('Refresh saved offer',refreshWorkspace,true));discard=button('Discard unsaved changes',()=>{clearDirty();openWorkspace(id);},true);title.append(discard);view.append(title);
       const navigation=h('nav',undefined,'workspace-nav');navigation.setAttribute('aria-label','Workspace sections');
@@ -242,7 +247,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
       checkout=mountCheckout({parent:right,h,button,check,
         context:()=>({user:state.user?.id,verified:state.user?.emailVerified,id:state.workspace?.workspaceId,role:state.workspace?.role,recovery:state.user?.readOnly===true,quote:state.workspace?.currentQuote,source:state.workspace?.source||workspace.source,accepted:state.workspace?.accepted,openChange:state.workspace?.openChangeRequest?.id,generation:state.generation,blocked:blocked(),confirmed:state.confirmed,dirty:state.dirty||state.sourceDirty}),
         load:()=>api('workspaces/'+id+'/checkout'),send:async(path,input)=>{const result=await write('workspaces/'+id+'/checkout'+(path?'/'+path:''),input);if(result)await refreshWorkspace();return result;}});
-      record=mountOfferRecord({parent:right,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,id:currentWorkspaceId,recovery:state.user?.readOnly===true,generation:state.generation,confirmed:state.confirmed,blocked:state.pending||!!state.intent}),load:async()=>{const active=await api('me');if(active.id!==state.user?.id){retireSession();throw Error('session_changed');}return api('workspaces/'+id);}});actions();
+      record=mountOfferRecord({parent:right,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,id:currentWorkspaceId,recovery:state.user?.readOnly===true,generation:state.generation,confirmed:state.confirmed,blocked:state.pending||!!state.intent}),load:async()=>{const workspace=await readCurrentWorkspace(id,state.user?.id,state.epoch);if(!workspace)throw Error('session_changed');return workspace;}});actions();
     }catch(error){if(e===state.epoch){clearView();view.append(h('h1','Workspace unavailable'),h('p',error.message||'The workspace could not be read.'),link('Back to workspaces','/'));}}
   }
   async function invitation(id){
