@@ -22,6 +22,12 @@ test('sign-out clears private header and panels before a held workspace reply ca
   await expect(page.getByText('creator@invented.example',{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Sign out',exact:true})).toHaveCount(0);
   await expect(page.getByRole('heading',{name:'Private sign-out qualification',exact:true})).toHaveCount(0);await expect(page.getByRole('heading',{name:'The complete conversation',exact:true})).toHaveCount(0);
   await expect(page.getByText('Your account data',{exact:true})).toBeHidden();expect((await page.request.get(f.app.origin+'/api/v1/me')).status()).toBe(401);
+  // A late initial-session completion must not overwrite the signed-out notice
+  // with that old account's maintenance state either.
+  f.app.pauseWrites();const oldSession=f.app.hold('/api/v1/workspaces/'+id,{method:'GET'});
+  await page.getByLabel('Email address',{exact:true}).fill('creator@invented.example');await page.getByLabel('Password',{exact:true}).fill('fixture-password-123');await page.getByRole('button',{name:'Sign in',exact:true}).click();await oldSession.started;
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();await expect(page.getByRole('heading',{name:'Your private workspace',exact:true})).toBeVisible();oldSession.release();await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('status',{name:'Workspace status',exact:true})).toContainText('Signed out.');await expect(page.getByRole('status',{name:'Workspace status',exact:true})).not.toContainText('Changes are temporarily paused.');await expect(page.getByText('creator@invented.example',{exact:true})).toHaveCount(0);
   expect(f.app.counts.publish).toBe(0);expect(f.app.counts.ai).toBe(0);expect(f.external).toEqual([]);
   await testInfo.attach('signed-out-private-screen-authored',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
  }finally{await f.close();}

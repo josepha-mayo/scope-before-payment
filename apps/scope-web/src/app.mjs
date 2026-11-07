@@ -297,7 +297,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   }
   async function loadSession(){
     const e=++state.epoch;state.merchantAck=null;state.buyerAck=null;state.workspace=null;state.confirmed=false;state.user=null;state.intent=null;clearView();session.replaceChildren();
-    try{const user=await api('me',undefined,null);if(e!==state.epoch)return;state.user=user;state.intent=readIntent(user.id);clearDirty();session.replaceChildren(h('span',user.email||'Signed in'),button('Sign out',signOut,true));await loadRoute();if(user.readOnly)say('Changes are temporarily paused. Saved records and previous-action checks remain available. Refresh this page after maintenance.');}
+    try{const user=await api('me',undefined,null);if(e!==state.epoch)return;state.user=user;state.intent=readIntent(user.id);clearDirty();session.replaceChildren(h('span',user.email||'Signed in'),button('Sign out',signOut,true));await loadRoute();if(e!==state.epoch||state.user?.id!==user.id)return;if(user.readOnly)say('Changes are temporarily paused. Saved records and previous-action checks remain available. Refresh this page after maintenance.');}
     catch(error){if(e!==state.epoch)return;state.user=null;state.workspace=null;state.intent=null;clearDirty();session.replaceChildren();await showAuth();if(error.status!==401)say(error.message||'The private service is unavailable.');}
   }
   async function showAuth(){
