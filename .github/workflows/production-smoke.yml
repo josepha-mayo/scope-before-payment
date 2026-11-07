@@ -1,8 +1,15 @@
 name: Production smoke
+run-name: ${{ inputs.notification_canary && 'Production smoke - intentional notification test' || 'Production smoke' }}
 on:
   schedule:
     - cron: '47 * * * *'
   workflow_dispatch:
+    inputs:
+      notification_canary:
+        description: 'Intentional failure to check existing owner notifications; sends no site requests'
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
     paths:
@@ -15,7 +22,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   public-boundaries:
-    if: github.repository == 'josepha-mayo/scope-before-payment'
+    if: github.repository == 'josepha-mayo/scope-before-payment' && !inputs.notification_canary
     runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
@@ -33,4 +40,31 @@ jobs:
           name: production-smoke-receipt
           path: production-smoke-receipt.json
           if-no-files-found: warn
+          retention-days: 14
+  notification-canary:
+    name: Intentional notification test - no site requests
+    if: github.repository == 'josepha-mayo/scope-before-payment' && github.event_name == 'workflow_dispatch' && inputs.notification_canary
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Record and fail the intentional notification canary
+        run: |
+          node --input-type=module <<'JS'
+          import {writeFileSync} from 'node:fs';
+          const receipt={kind:'scope_notification_canary_v1',intentionalFailure:true,
+            productionHealthObserved:false,siteRequests:0,providerRequests:0,
+            createdAt:new Date().toISOString(),runId:process.env.GITHUB_RUN_ID,
+            runAttempt:process.env.GITHUB_RUN_ATTEMPT,sourceCommit:process.env.GITHUB_SHA};
+          writeFileSync('notification-canary-receipt.json',JSON.stringify(receipt,null,2)+'\n');
+          throw Error('Intentional notification-delivery test. No production outage or site request is asserted.');
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notification-canary-receipt
+          path: notification-canary-receipt.json
+          if-no-files-found: error
           retention-days: 14

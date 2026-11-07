@@ -68,12 +68,45 @@ authored HTTP responses and the actual anonymous API/webhook handlers.
 GitHub schedules are best effort: they can be delayed or dropped, run from the
 default branch and can be disabled after60days without repository activity in a
 public repository. See the [official schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
-The failed workflow is the available incident signal in Actions. Delivery to an
-owner's email/device, response coverage and a separate missing-run alert are not
-qualified. This is not a continuous uptime or paging service.
+The failed workflow is the available incident signal in Actions. Owner-email
+delivery needs a matching inbox receipt from the controlled test below. Device
+paging, response coverage and an independent missing-run alert need separate
+qualification. This is not a continuous uptime or paging service.
 
 A green result does not exercise browser JavaScript, authenticated database reads,
 distinct buyer membership, the enabled webhook POST/signature path, AI quality,
 PayPal OAuth/Orders/capture, backup restoration, retention or erasure. Those need
 their own evidence. The monitor is independent of the current source/production
 version difference and cannot certify that a source-only feature is deployed.
+
+## Qualify the existing owner-notification route
+
+The same workflow has a manual-only `notification_canary` Boolean input, false
+by default. With it enabled, the normal probe job is skipped. A clearly named
+notification-test job writes a separate `notification-canary-receipt` and
+intentionally fails. It makes no site, database, AI or PayPal requests and reads
+no app credentials. It does not change notification settings or add recipients.
+Scheduled and ordinary manual runs use the normal probes.
+
+From the repository owner account, admit one test and retain its run ID:
+
+```sh
+gh workflow run production-smoke.yml --ref main -f notification_canary=true
+```
+
+Do not repeat an uncertain dispatch. Locate the existing manual run first.
+Verify the named canary step failed intentionally, setup and artifact upload
+succeeded, the public-boundaries job was skipped, and the receipt records zero
+site/provider requests. A setup failure without that receipt does not qualify
+the canary. Match the actual run URL to the owner inbox notification and record
+its delivery timestamp. Keep email headers, management links and recipient
+addresses out of public source and receipts. Do not follow management links or
+change subscriptions as part of the check.
+
+The expected failed run is a notification test, not a production incident.
+Keep it separate from the last real probe result. Delivery to one inbox does
+not prove the owner read it, response coverage, mobile paging, scheduled-run
+delivery or an independent missing-run alert. Missing scheduled checks remain
+unknown health. GitHub describes notification behavior and the separate owner
+rules for schedules in its [workflow notification documentation](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs).
+No automatic repeat or synthetic failure is added to the hourly schedule.
