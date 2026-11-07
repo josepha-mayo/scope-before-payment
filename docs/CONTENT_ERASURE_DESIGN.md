@@ -4,8 +4,9 @@ This branch is building the complete content-erasure flow. It is not an enabled
 feature or a privacy-compliance claim. `workspaceContentErasureEnabled` remains
 false. The draft now has database request/consent/claim/completion states and
 an explicit atomic payload-purge store method, server-gated privacy routes and
-privacy-history downloads. Routes remain unavailable by default; no privacy UI
-or production store access is enabled. Only invented test fixtures are purged.
+privacy-history downloads. The browser flow is implemented behind the same
+server capability. Routes and controls remain unavailable by default, and no
+production store access is enabled. Only invented test fixtures are purged.
 Account/Identity erasure, provider retention, hosting logs and
 backups remain distinct requirements; do not turn this document into a fixed
 deletion-period promise.
@@ -155,8 +156,24 @@ saved immediately before the cutoff is not lost to JavaScript millisecond
 rounding. Existing three-digit cursor timestamps remain accepted; a cursor is
 a read selector, not a retained content snapshot or membership grant.
 
-Privacy UI, browser recovery, native platform qualification,
-protection against pre-erasure restores across older
+The browser offers distinct request, agreement, cancellation, irreversible lock
+and final removal confirmations, bound to the signed-in account and saved
+version. A member must load the version covered by the review before agreeing.
+Ordinary writes pause while data downloads remain available. Unsaved edits and
+other original pending actions prevent privacy decisions. The same strict
+actor/path/request-ID journal records privacy actions without content payloads.
+
+Before sending final removal, the browser saves that original reference and
+clears conversation, offer, editor, AI/payment/history and download views and
+acknowledgements. Epoch/generation changes reject held private replies and
+downloads. Lost replies keep that view clear; reload/navigation and persisted
+page restoration check the original reference before automatic private reads.
+Recovery is GET-only, never another POST. A completed original operation shows
+minimal completion status without reopening the content view. Session changes
+invalidate older confirmations. This client behavior does not provide the
+separate server fence required for a pre-erasure restore or older deployment.
+
+Native platform qualification and protection against pre-erasure restores across older
 deployments and the operator retention decision remain unfinished. No
 existing customer record, original provider admission, consumed budget or live
 credential was erased, recreated or changed for this work.

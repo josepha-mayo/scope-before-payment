@@ -33,7 +33,7 @@ export async function collectAccountRecord({actor,load,check,progress=()=>{},rec
 }
 
 export function mountAccountRecord({parent,h,button,context,load}){
-  const panel=h('details'),status=h('p');status.setAttribute('role','status');status.setAttribute('aria-label','Account data download status');
+  const panel=h('details'),status=h('p');panel.id='scope-account-data';status.setAttribute('role','status');status.setAttribute('aria-label','Account data download status');
   let busy=false,run=0,disposed=false,displayActor,displayEpoch;
   const download=button('Download account data',async()=>{
     if(download.disabled)return;const own=++run,before=context();busy=true;actions();status.textContent='Reading your saved account data…';
