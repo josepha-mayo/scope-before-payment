@@ -23,7 +23,8 @@ export function createContentErasureMethods({transaction,principal,workspace,loc
   return transaction(async client=>{
    await lockActor(client,user);const w=await workspace(client,user,id,true,true);
    // Explicit row locking permits privacy decisions while ordinary writes are
-   // paused. This path cannot mutate source/offer/financial tables.
+   // paused. Only the separate purge action can redact content; financial
+   // history and all original claim/quota facts remain outside that transition.
    const saved=await previous(client,user,input.requestId,fingerprint);
    if(saved)return {view:await status(client,user,id,saved.erasureRequestId),dispatch:null,actorId:user};
    if(w.content_erased)fail('workspace_content_erased',410);

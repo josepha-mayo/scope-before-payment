@@ -69,7 +69,6 @@ CREATE OR REPLACE FUNCTION scope_app.immutable_record() RETURNS trigger LANGUAGE
 BEGIN
   IF TG_OP='UPDATE' THEN
     IF scope_app.content_erasure_redaction_allowed(TG_TABLE_NAME,to_jsonb(OLD),to_jsonb(NEW)) THEN RETURN NEW; END IF;
-    IF NEW.project_name IS NULL THEN RAISE EXCEPTION 'scope_content_payload_required' USING ERRCODE='23514'; END IF;
   END IF;
   RAISE EXCEPTION 'scope_record_is_immutable' USING ERRCODE='23514';
 END;
@@ -155,6 +154,7 @@ BEGIN
   IF TG_TABLE_NAME='workspaces' THEN
     wid:=NEW.id;
     IF scope_app.content_erasure_redaction_allowed(TG_TABLE_NAME,to_jsonb(OLD),to_jsonb(NEW)) THEN RETURN NEW; END IF;
+    IF NEW.project_name IS NULL THEN RAISE EXCEPTION 'scope_content_payload_required' USING ERRCODE='23514'; END IF;
   ELSE wid:=NEW.workspace_id; END IF;
   PERFORM 1 FROM scope_app.workspaces WHERE id=wid FOR UPDATE;
   IF TG_TABLE_NAME='operations' THEN
