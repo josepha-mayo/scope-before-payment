@@ -13,6 +13,22 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+test('dashboard pages retain prior results on failed reads and retire them when the account changes mid-page',async({browser},testInfo)=>{
+ const f=await fixture(browser);try{
+  const recipient='pagination-'+require('node:crypto').randomUUID()+'@invented.example';f.app.users.buyer.email=recipient;
+  const owner=f.app.store('creator'),messages=[{id:'B1',role:'buyer',text:'Invented paginated commission.'}];
+  for(let i=0;i<26;i++)await owner.create({requestId:require('node:crypto').randomUUID(),projectName:'Page commission '+String(i).padStart(2,'0'),buyerEmail:recipient,messages});
+  const page=await f.page('creator'),links=page.locator('a[href^="/workspace/"]');await expect(links).toHaveCount(25);await expect(page.getByRole('button',{name:'Load more workspaces',exact:true})).toBeVisible();
+  let fail=true;await page.route(/\/api\/v1\/workspaces\?cursor=/,route=>{if(fail&&new URL(route.request().url()).searchParams.get('cursor')!=='start'){fail=false;return route.fulfill({status:503,contentType:'application/json',body:'{"error":{"code":"service_unavailable"}}'});}return route.continue();});
+  await page.getByRole('button',{name:'Load more workspaces',exact:true}).click();await expect(page.getByLabel('Workspaces list status',{exact:true})).toContainText('Displayed items are unchanged');await expect(links).toHaveCount(25);
+  await page.getByRole('button',{name:'Retry workspace page',exact:true}).click();await expect(links).toHaveCount(26);expect(new Set(await links.evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')))).size).toBe(26);await expect(page.getByRole('button',{name:'Load more workspaces',exact:true})).toBeHidden();
+  await page.reload();await expect(links).toHaveCount(25);const held=f.app.hold('/api/v1/workspaces',{method:'GET'});await page.getByRole('button',{name:'Load more workspaces',exact:true}).click();await held.started;await page.context().addCookies([{name:'scope_fixture_actor',value:'buyer',url:f.app.origin}]);held.release();
+  await expect(page.locator('.session')).toContainText(recipient);await expect(links).toHaveCount(0);const invitations=page.locator('a[href^="/invitation/"]');await expect(invitations).toHaveCount(25);
+  await page.getByRole('button',{name:'Load more invitations',exact:true}).click();await expect(invitations).toHaveCount(26);await expect(page.getByRole('button',{name:'Load more invitations',exact:true})).toBeHidden();expect(f.external).toEqual([]);expect(f.app.counts.ai).toBe(0);
+  await testInfo.attach('paginated-invitations-authored',{body:await page.screenshot({fullPage:true}),contentType:'image/png'});
+ }finally{await f.close();}
+});
+
 test('account data copies download older saved conversations for both members without exporting unsaved edits',async({browser},testInfo)=>{
  const f=await fixture(browser);try{
   const merchant=await f.page('creator'),id=await create(merchant);await fill(merchant);await publish(merchant,1);

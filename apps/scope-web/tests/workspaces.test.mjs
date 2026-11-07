@@ -28,6 +28,7 @@ async function accountCopy(store){
   }
   return {manifest,sections};
 }
+async function collectionItems(store,method){let next='start';const items=[],seen=new Set();while(next){assert.equal(seen.has(next),false);seen.add(next);const page=await store[method](next);items.push(...page.items);next=page.next;}return items;}
 test.before(async () => {
   assert.equal((await pool.query("SELECT to_regnamespace('scope_app') AS schema")).rows[0].schema, null, 'Refuse to modify an existing application schema');
   const client = await pool.connect();
@@ -530,9 +531,27 @@ test('account copies page beyond the dashboard limit and remain isolated from an
   const other=createWorkspaceStore({pool,getPrincipal:async()=>({id:randomUUID()})});
   await other.create({requestId:randomUUID(),buyerId:f.merchantId,messages});
   const copy=await accountCopy(f.merchant);assert.equal(copy.sections.workspaces.length,101);assert.equal(copy.sections.conversations.length,101);assert.equal(new Set(copy.sections.workspaces.map(w=>w.workspaceId)).size,101);
+  const listed=await collectionItems(f.merchant,'workspacePage');assert.equal(listed.length,101);assert.equal(new Set(listed.map(w=>w.workspaceId)).size,101);assert.deepEqual(new Set(listed.map(w=>w.workspaceId)),new Set(copy.sections.workspaces.map(w=>w.workspaceId)));
+  const firstPage=await f.merchant.workspacePage('start');assert.equal(firstPage.items.length,25);await assert.rejects(f.stranger.workspacePage(firstPage.next),code('session_changed'));assert.deepEqual(await f.stranger.workspacePage('start'),{items:[],next:null});
   const foreign=await accountCopy(f.stranger);for(const rows of Object.values(foreign.sections))assert.deepEqual(rows,[]);
   await assert.rejects(f.stranger.accountRecordPage(copy.manifest.pages[0].cursor),code('session_changed'));
   for(const token of ['abc',copy.manifest.pages[0].cursor+'=',Buffer.from(JSON.stringify({actor:f.merchantId,section:'paypal_oauth_receipts',after:'',at:new Date().toISOString()})).toString('base64url')])await assert.rejects(f.merchant.accountRecordPage(token),code('account_record_cursor_invalid'));
+});
+
+test('collection cursors preserve tied microsecond timestamps for workspace and verified-invitation pages',async()=>{
+  const creator={id:randomUUID(),email:'collection-creator@invented.example'},recipient={id:randomUUID(),email:'collection-'+randomUUID()+'@invented.example',emailVerified:true,confirmedAt:'2026-11-07T00:00:00Z'};
+  const fixedPool={async connect(){const c=await pool.connect();return {release:(...args)=>c.release(...args),query(sql,args){
+    if(sql.startsWith('INSERT INTO scope_app.workspaces('))sql=sql.replace('project_name)','project_name,created_at)').replace('VALUES($1,$2,$3,$4)',"VALUES($1,$2,$3,$4,'2026-01-01T00:00:00.123456Z')");
+    if(sql.startsWith('INSERT INTO scope_app.invitations('))sql=sql.replace('recipient_email)','recipient_email,created_at)').replace('VALUES($1,$2)',"VALUES($1,$2,'2026-01-01T00:00:00.123457Z')");
+    return c.query(sql,args);
+  }};}};
+  const owner=createWorkspaceStore({pool:fixedPool,getPrincipal:async()=>creator}),buyer=createWorkspaceStore({pool,getPrincipal:async()=>recipient});
+  for(let n=0;n<30;n++)await owner.create({requestId:randomUUID(),buyerEmail:recipient.email,messages});
+  const first=await owner.workspacePage('start');assert.equal(JSON.parse(Buffer.from(first.next,'base64url')).at,'2026-01-01T00:00:00.123456Z');
+  const workspaces=await collectionItems(owner,'workspacePage'),invitations=await collectionItems(buyer,'invitationPage');assert.equal(workspaces.length,30);assert.equal(invitations.length,30);assert.equal(new Set(invitations.map(w=>w.workspaceId)).size,30);
+  await buyer.joinInvitation(invitations[0].workspaceId,{requestId:randomUUID(),confirmation:'join-this-invited-workspace'});assert.equal((await collectionItems(buyer,'invitationPage')).length,29);
+  const unverified=createWorkspaceStore({pool,getPrincipal:async()=>({...recipient,emailVerified:false})});assert.deepEqual(await unverified.invitationPage('start'),{items:[],next:null});
+  const inviteCursor=(await buyer.invitationPage('start')).next;await assert.rejects(unverified.invitationPage(inviteCursor),code('session_changed'));await assert.rejects(buyer.workspacePage(inviteCursor),code('collection_cursor_invalid'));
 });
 
 test('account copies retain actual saved AI and payment history without approval links or another creator’s review',async()=>{

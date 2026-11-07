@@ -25,6 +25,8 @@ capture and registered webhook delivery have not been demonstrated.
 The source also includes a private [account data copy](docs/ACCOUNT_DATA_COPY.md)
 with older saved conversations and paginated history. That addition is not yet
 deployed: the hosted release remains at `4de65f7` while credits are conserved.
+The source dashboard also [pages through workspace and invitation lists](docs/COLLECTION_PAGES.md)
+so memberships beyond the first 100 remain reachable.
 
 For a portable manual-offer preview, install Node.js 24 and run from this checkout:
 

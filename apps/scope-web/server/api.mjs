@@ -53,7 +53,11 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
       const url = new URL(request.url), target = route(url.pathname);
       if (!target) reject('route_not_found', 404);
       action=target.action;
-      if (url.search) reject('request_query_invalid', 400);
+      let pageCursor=null;
+      if(url.search){
+        if(request.method!=='GET'||!['collection','invitations'].includes(target.action)||[...url.searchParams.keys()].join(',')!=='cursor'||!url.searchParams.get('cursor'))reject('request_query_invalid',400);
+        pageCursor=url.searchParams.get('cursor');
+      }
       if (!target.methods.includes(request.method)) return send({ error: { code: 'method_not_allowed', traceId } }, 405, { Allow: target.methods.join(', ') });
       const origin = request.headers.get('origin'), site = request.headers.get('sec-fetch-site');
       if (origin !== null && origin !== url.origin || site !== null && !['same-origin', 'none'].includes(site)) reject('request_origin_rejected', 403);
@@ -73,7 +77,7 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
       switch (target.action) {
         case 'account-record': result=await store.accountRecord(); break;
         case 'account-record-page': result=await store.accountRecordPage(target.id); break;
-        case 'collection': result = request.method === 'POST' ? await store.create(input) : await store.list(); break;
+        case 'collection': result = request.method === 'POST' ? await store.create(input) : pageCursor===null?await store.list():await store.workspacePage(pageCursor); break;
         case 'read': result = await store.read(target.id); break;
         case 'source': result = await store.replaceSource(target.id, input); break;
         case 'checkout': result=request.method==='POST'?await store.startCheckout(target.id,input):await store.readCheckout(target.id);break;
@@ -85,7 +89,7 @@ export function createApiHandler({ getUser, getPool, draftProvider, checkoutProv
         case 'request-changes': result = await store.requestChanges(target.id, input); break;
         case 'withdraw-changes': result = await store.withdrawChanges(target.id, input); break;
         case 'invitation': result = await store.readInvitation(target.id); break;
-        case 'invitations': result = await store.listInvitations(); break;
+        case 'invitations': result = pageCursor===null?await store.listInvitations():await store.invitationPage(pageCursor); break;
         case 'join': result = await store.joinInvitation(target.id, input); break;
         case 'operation': result = await store.operationStatus(target.id); break;
         default: reject('route_not_found', 404);
