@@ -33,8 +33,12 @@ export function mountCheckout({parent,h,button,check,context,load,send}) {
       const history=h('details');history.append(h('summary','Payment action history'));
       for(const item of a.history)history.append(h('p',item.kind+' · '+item.state+' · '+item.createdAt));panel.append(history);
     }else if(!saved.available)panel.append(h('p','No payment has been requested. Sandbox checkout is not enabled in this hosted preview.'));
+    else if(!c.quote)panel.append(h('p','The creator must publish an offer before the buyer can review it for payment.'));
+    else if(c.openChange)panel.append(h('p','A change request is open. The creator must publish a response before the buyer can accept an offer for payment.'));
+    else if(c.quote.sourceBinding!==c.source.binding)panel.append(h('p','The conversation changed. The creator must publish a new offer for the buyer to review and accept before payment.'));
+    else if(c.quote.fields.terms!=='Single full payment of USD'+(c.quote.totalCents/100).toFixed(2)+' before work starts.')panel.append(h('p','The published payment terms do not match the full-payment preset for USD'+(c.quote.totalCents/100).toFixed(2)+'. The creator must publish a revised offer using that preset, then the buyer must review and accept the new revision before sandbox checkout.'));
     else if(c.role==='merchant')panel.append(h('p','Only the invited buyer can start payment after accepting the current offer.'));
-    else if(!saved.canCreate)panel.append(h('p','Accept the current offer with a single full payment before work to continue to sandbox checkout.'));
+    else if(!saved.canCreate)panel.append(h('p',c.accepted?'Checkout is unavailable for this saved offer. Refresh the saved offer and payment status before continuing.':'Review and accept the current offer before starting sandbox checkout.'));
     else{
       const amount='USD'+(c.quote.totalCents/100).toFixed(2),consent=check('Create a PayPal sandbox order for '+amount+' and accepted revision '+c.quote.revision+'. Approval and payment remain separate steps.',actions);ack=consent.input;
       start=button('Create sandbox checkout',async()=>{actions();if(start.disabled)return;await perform('',{revision:c.quote.revision,quoteBinding:c.quote.binding,confirmation:'create-sandbox-checkout-for-this-offer'});});panel.append(consent.label,start);

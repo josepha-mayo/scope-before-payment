@@ -13,6 +13,27 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+test('payment preset explains unavailable actions and preserves existing terms when the price changes',async({browser})=>{
+ const f=await fixture(browser,{checkout:true});try{
+  const page=await f.page('creator');await create(page);const preset=page.getByRole('button',{name:'Use full payment before work',exact:true}),price=page.getByLabel('All-in price (USD)',{exact:true}),terms=page.getByLabel('Payment timing and other terms',{exact:true}),help=page.locator('#scope-payment-preset-help');
+  await expect(preset).toBeDisabled();await expect(help).toContainText('Enter a price');await fill(page);await expect(preset).toBeDisabled();await expect(help).toContainText('clear the terms field after reviewing it');
+  const ack=page.getByLabel('I reviewed the conversation, all six offer fields, exclusions and payment terms. Publish this exact offer.',{exact:true});await ack.check();await price.fill('160.00');await expect(ack).not.toBeChecked();await expect(terms).toHaveValue('Single full payment of USD145.00 before work starts.');
+  await terms.fill('Half before work; keep the cancellation terms.');await expect(preset).toBeDisabled();await expect(terms).toHaveValue('Half before work; keep the cancellation terms.');await terms.fill('');await price.fill('10000.01');await expect(preset).toBeDisabled();await expect(help).toContainText('Enter a price');await price.fill('10000.00');await expect(preset).toBeEnabled();
+  await price.fill('160.00');await preset.click();await expect(terms).toHaveValue('Single full payment of USD160.00 before work starts.');await expect(preset).toBeDisabled();await expect(ack).not.toBeChecked();expect(f.app.counts.publish).toBe(0);expect(f.app.checkoutCounts).toEqual({create:0,check:0,capture:0});expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('accepted non-preset payment terms explain the needed new revision without authorizing checkout',async({browser},testInfo)=>{
+ const f=await fixture(browser,{checkout:true});try{
+  const merchant=await f.page('creator');await create(merchant);await fill(merchant);await merchant.getByLabel('Payment timing and other terms',{exact:true}).fill('Payment in one full payment before work starts.');await publish(merchant,1);
+  const buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await accept(buyer);
+  const payment=buyer.locator('#scope-payment');await expect(payment).toContainText('The published payment terms do not match the full-payment preset for USD145.00.');await expect(payment).toContainText('buyer must review and accept the new revision');await expect(buyer.getByRole('button',{name:'Create sandbox checkout',exact:true})).toHaveCount(0);await payment.scrollIntoViewIfNeeded();await buyer.screenshot({path:testInfo.outputPath('authored-payment-terms-blocked.png')});
+  await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.locator('#scope-payment')).toContainText('The published payment terms do not match');await merchant.getByLabel('All-in price (USD)',{exact:true}).fill('210.00');await merchant.getByLabel('Payment timing and other terms',{exact:true}).fill('');await merchant.getByRole('button',{name:'Use full payment before work',exact:true}).click();await publish(merchant,2);
+  await buyer.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(payment).toContainText('Review and accept the current offer');await expect(buyer.getByRole('button',{name:'Create sandbox checkout',exact:true})).toHaveCount(0);await accept(buyer);
+  await expect(buyer.getByLabel('Create a PayPal sandbox order for USD210.00 and accepted revision 2. Approval and payment remain separate steps.',{exact:true})).toBeVisible();await expect(buyer.getByRole('button',{name:'Create sandbox checkout',exact:true})).toBeDisabled();expect(f.app.checkoutCounts).toEqual({create:0,check:0,capture:0});expect(f.app.counts.publish).toBe(2);expect(f.app.counts.accept).toBe(2);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('sign-out clears private header and panels before a held workspace reply can arrive',async({browser},testInfo)=>{
  const f=await fixture(browser);try{
   const page=await f.page('creator'),id=await create(page,'Private sign-out qualification');
@@ -339,7 +360,11 @@ test('signed refund through HTTP and PostgreSQL retires capture confirmation aft
   await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.locator('.payment-state')).toHaveText('Sandbox payment confirmed.');await expect(merchant.getByRole('link',{name:'Approve this order on PayPal sandbox'})).toHaveCount(0);
   const completed=await f.app.store('buyer').readCheckout(id);const delivered=await f.app.deliverWebhook(f.app.webhookEvent({type:'PAYMENT.CAPTURE.REFUNDED',orderId:completed.checkout.orderId,captureId:completed.checkout.captureId}));expect(delivered.status).toBe(200);
   await buyer.getByRole('button',{name:'Refresh payment status',exact:true}).click();await expect(buyer.locator('.payment-state')).toHaveText('PayPal reported a payment change or conflicting update. Review the payment before starting work.');await expect(buyer.getByRole('button',{name:'Confirm sandbox payment',exact:true})).toHaveCount(0);
-  await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeEnabled();await buyer.getByRole('button',{name:'Check order with PayPal',exact:true}).click();await expect(buyer.locator('.payment-state')).toContainText('Review the payment before starting work');
+  const recheck=f.app.hold('/checkout/check');await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeEnabled();await buyer.getByRole('button',{name:'Check order with PayPal',exact:true}).click();await recheck.started;
+  // The refund warning already exists while the new check is pending. Wait
+  // for the held HTTP reply and settled controls, not the unchanged caption.
+  await expect(buyer.locator('.payment-state')).toContainText('Review the payment before starting work');expect(f.app.checkoutCounts.check).toBe(2);await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeDisabled();
+  recheck.release();await expect.poll(()=>f.app.checkoutCounts.check).toBe(2);await expect(buyer.getByRole('button',{name:'Check order with PayPal',exact:true})).toBeEnabled();
   await merchant.getByRole('button',{name:'Refresh payment status',exact:true}).click();await expect(merchant.locator('.payment-state')).toContainText('Review the payment before starting work');
   expect(f.app.checkoutCounts).toEqual({create:1,check:2,capture:1});expect(f.external).toEqual([]);await buyer.locator('#scope-payment').scrollIntoViewIfNeeded();await buyer.screenshot({path:testInfo.outputPath('authored-checkout-recovered.png'),fullPage:false});
  }finally{await f.close();}
