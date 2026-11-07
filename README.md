@@ -27,6 +27,8 @@ with older saved conversations and paginated history. That addition is not yet
 deployed: the hosted release remains at `4de65f7` while credits are conserved.
 The source dashboard also [pages through workspace and invitation lists](docs/COLLECTION_PAGES.md)
 so memberships beyond the first 100 remain reachable.
+It also provides [read-only revision history and comparisons](docs/REVISION_REVIEW.md)
+before acceptance, including price, use-permission and source-only changes.
 
 For a portable manual-offer preview, install Node.js 24 and run from this checkout:
 

@@ -17,3 +17,4 @@ h1,.cards a{overflow-wrap:anywhere}
 .ai-review .copy-hint,.ai-limits p{font-size:.82rem;color:var(--muted)}
 .ai-review .ai-limits{margin-bottom:0;padding-bottom:0}
 @media(max-width:680px){.workspace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px 0}.workspace-grid section[id]{scroll-margin-top:130px}.conversation{position:static;max-height:460px}}
+.revision-changes{border-left:3px solid var(--accent);padding:16px 18px;margin:24px 0;background:#eef2e7}.revision-changes>h3{margin-top:0}.revision-changes .changed-field{border-top:1px solid var(--line);margin-top:16px;padding-top:8px}.changed-field h4,.revision-history dt{font-size:.85rem;font-weight:700;margin:14px 0 6px}.revision-changes p,.revision-history p,.revision-history dd{font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}.revision-history dd{margin:4px 0 18px}.price-change,.decision-target{font-weight:650}.history-amount{font-weight:700;color:var(--accent)}
