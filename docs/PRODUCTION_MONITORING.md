@@ -68,9 +68,10 @@ authored HTTP responses and the actual anonymous API/webhook handlers.
 GitHub schedules are best effort: they can be delayed or dropped, run from the
 default branch and can be disabled after60days without repository activity in a
 public repository. See the [official schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
-The failed workflow is the available incident signal in Actions. Delivery to an
-owner's email/device, response coverage and a separate missing-run alert are not
-qualified. This is not a continuous uptime or paging service.
+The failed workflow is the available incident signal in Actions. Owner-email
+delivery needs a matching inbox receipt from the controlled test below. Device
+paging, response coverage and an independent missing-run alert need separate
+qualification. This is not a continuous uptime or paging service.
 
 A green result does not exercise browser JavaScript, authenticated database reads,
 distinct buyer membership, the enabled webhook POST/signature path, AI quality,
