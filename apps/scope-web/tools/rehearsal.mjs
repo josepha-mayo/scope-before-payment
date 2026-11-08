@@ -34,7 +34,7 @@ export async function launchRehearsal({signal}={}){
  try{
   check();try{await docker('info','--format','{{.ServerVersion}}');}catch{throw Error('docker_engine_required_start_Docker_Desktop_or_Docker_Engine');}
   // Pulling the official image does not create a data container or account.
-  check();await docker('pull','postgres:17');check();
+  check();try{await docker('image','inspect','postgres:17','--format','{{.Id}}');}catch{await docker('pull','postgres:17');}check();
   container=await docker('create','--name',name,'--label',label+'='+nonce,
    '--publish','127.0.0.1::5432','--env','POSTGRES_DB=scope_test','--env','POSTGRES_USER=scope_fixture',
    '--env','POSTGRES_PASSWORD=owned_local_rehearsal_only','--health-cmd','pg_isready -U scope_fixture -d scope_test',
