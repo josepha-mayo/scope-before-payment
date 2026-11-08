@@ -21,3 +21,5 @@ apps/scope-web/restore-receipt.json
 
 *.pem
 *.key
+tools/browser-tests/rehearsal-receipt.json
+tools/browser-tests/rehearsal-overview.png
