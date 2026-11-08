@@ -1,5 +1,27 @@
 # Record an owned review cut
 
+## Published prototype edit
+
+[Watch the public narrated prototype](https://www.youtube.com/watch?v=3WPUbg7cLTg)
+(2:53), published November 8, 2026. It combines the owned workflow below with
+separate dated screenshots: a retained live Claude review on invented text
+(November 7) and PayPal's saved response for an earlier USD120 sandbox order
+(November 5, inspected November 8). That response was awaiting payer action;
+it is not a capture, current-status query or payment for the authored USD210
+commission. The workflow's authored identities, AI replay and PayPal replies
+remain visibly labeled. Real capture, registered signed delivery and independent
+buyer qualification remain unfinished.
+
+The edit uses the recording tree `b7fb759ba17bf7f723f7dc3e4d4f12d0734c1e50`
+from main `c5de092`, with synthetic system narration and no music or cloned voice.
+Its MP4 SHA256 is
+`5d22e694213c720cfb5f9883276e2dadade1106998f3aae5750abff745947e98`.
+Later documentation/CI-only changes are not a new application execution. The
+public video is not evidence that a Devpost entry exists or production gates
+have passed.
+
+## Reproduce the raw workflow recording
+
 The `Owned review cut` GitHub Actions workflow records the current frontend,
 HTTP API and actual PostgreSQL in an isolated fixture. The approximately
 158-second WebM is a review artifact. Every scene carries an explicit label:
