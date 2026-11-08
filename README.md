@@ -54,6 +54,24 @@ view, separately accept, then create/check/capture the simulated order. Use
 rehearsal's payment terms. These roles and provider responses are authored; this
 is not a real PayPal payment or a distinct-person agreement. Stop with Ctrl+C.
 
+For the complete hosted-style UI, API and PostgreSQL **local authored rehearsal**,
+install Node.js24 and start Docker Engine (Linux containers), then run:
+
+```sh
+cd apps/scope-web
+npm ci --include=dev --ignore-scripts
+npm run rehearse
+```
+
+Open the printed loopback URL. The banner contains both invented accounts and
+steps from AI suggestion review through buyer acceptance and payment rehearsal.
+This uses fixed authored AI/PayPal replies, not live provider calls. It requires
+no hosting account, credentials or model credits. The first run downloads the
+official PostgreSQL17 image. Ctrl+C removes only this run's disposable container
+and data; restarting is a new invented rehearsal. Never use real passwords or
+customer content, publish this test build, or tunnel it onto the Internet.
+See [rehearsal details](docs/LOCAL_REHEARSAL.md).
+
 ## The hosted product
 
 - Private workspaces use Netlify Identity and server-checked membership.

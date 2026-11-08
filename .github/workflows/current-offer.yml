@@ -63,6 +63,17 @@ jobs:
           SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
           SCOPE_RESTORE_CONTAINER: ${{ job.services.postgres.id }}
         run: node tools/restore-drill.mjs
+      - name: Run the public local rehearsal launcher through Chromium and remove its owned container
+        working-directory: tools/browser-tests
+        run: node rehearsal-smoke.js
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: local-rehearsal-receipt
+          path: |
+            tools/browser-tests/rehearsal-receipt.json
+            tools/browser-tests/rehearsal-overview.png
+          retention-days: 7
       - uses: actions/upload-artifact@v4
         if: always()
         with:
