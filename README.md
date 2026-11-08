@@ -17,6 +17,12 @@ Joining, copying suggestions, publishing and accepting never request payment.
 
 ## Try it
 
+[Watch the 2:53 narrated prototype demo](https://www.youtube.com/watch?v=3WPUbg7cLTg).
+The repeatable workflow uses authored accounts, an AI replay and authored PayPal
+replies. Separate dated screenshots show a retained live Claude result and an
+original historical sandbox order response. Real capture and registered signed
+delivery remain unverified. See the [recording and edit notes](docs/REVIEW_CUT.md).
+
 [Hosted workspace](https://scope-before-payment.netlify.app) — sign in and use
 invented conversations. Identity, PostgreSQL persistence and Claude review are
 integrated. Hosted PayPal checkout is currently inactive; a real hosted sandbox
