@@ -259,6 +259,8 @@ test('changing the AI recipient requires its new disclosure before any committed
   await page.getByRole('button',{name:'Review saved conversation with AI',exact:true}).click();
   await expect(page.getByLabel(nvidia,{exact:true})).toBeVisible();await expect(page.getByLabel(nvidia,{exact:true})).not.toBeChecked();
   await expect(page.getByLabel(claude,{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Review saved conversation with AI',exact:true})).toBeDisabled();expect(f.app.counts.ai).toBe(0);
+  await expect(page.getByLabel(nvidia,{exact:true})).toBeDisabled();await expect(page.getByRole('status',{name:'Workspace status',exact:true})).toContainText('Refresh the saved offer');
+  await page.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(page.getByLabel(nvidia,{exact:true})).toBeEnabled();await expect(page.getByLabel(nvidia,{exact:true})).not.toBeChecked();expect(f.app.counts.ai).toBe(0);
   await page.getByLabel(nvidia,{exact:true}).check();await page.getByRole('button',{name:'Review saved conversation with AI',exact:true}).click();
   await expect(page.locator('.ai-state')).toHaveText('AI attempt saved · outcome unconfirmed');await expect(page.getByText('Saved review: NVIDIA Nemotron 3.5 Lightning',{exact:true})).toBeVisible();expect(f.app.counts.ai).toBe(1);
   f.app.setDraftProfile(undefined);await page.getByRole('button',{name:'Check saved AI result',exact:true}).click();
