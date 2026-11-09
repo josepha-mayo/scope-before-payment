@@ -1,0 +1,163 @@
+1
+00:00:00,030 --> 00:00:02,900
+A client asks for one illustration. Then the
+
+2
+00:00:02,780 --> 00:00:06,280
+files, permissions and price change. Which version are
+
+3
+00:00:06,160 --> 00:00:07,440
+they actually paying for?
+
+4
+00:00:10,030 --> 00:00:12,300
+I'm Joseph, and this is Scope. It keeps
+
+5
+00:00:12,180 --> 00:00:15,360
+the conversation, the exact offer, the buyer's decision
+
+6
+00:00:15,240 --> 00:00:18,520
+and payment in one place. This walkthrough uses
+
+7
+00:00:18,400 --> 00:00:21,360
+invented accounts and clearly labeled provider replies.
+
+8
+00:00:24,030 --> 00:00:26,200
+The model suggests terms from the saved messages.
+
+9
+00:00:27,200 --> 00:00:29,380
+Each suggestion links to the creator's own words.
+
+10
+00:00:29,920 --> 00:00:31,540
+This is a saved result from the real
+
+11
+00:00:31,420 --> 00:00:34,980
+integration. The creator checks the evidence and exclusions
+
+12
+00:00:34,860 --> 00:00:36,060
+before copying anything.
+
+13
+00:00:44,030 --> 00:00:46,880
+The creator stays in control. AI cannot choose
+
+14
+00:00:46,760 --> 00:00:49,480
+the price or authorize payment. The offer records
+
+15
+00:00:49,360 --> 00:00:53,380
+the files, permitted uses, exclusions, delivery date and
+
+16
+00:00:53,260 --> 00:00:55,740
+revision rounds, with a price the creator sets
+
+17
+00:00:55,620 --> 00:00:56,080
+manually.
+
+18
+00:01:01,030 --> 00:01:04,000
+Publishing saves an exact revision. It doesn't accept
+
+19
+00:01:03,880 --> 00:01:06,940
+the offer or initiate checkout. Those are separate
+
+20
+00:01:06,820 --> 00:01:07,300
+decisions.
+
+21
+00:01:11,030 --> 00:01:13,780
+The buyer asks for three hundred postcards instead
+
+22
+00:01:13,660 --> 00:01:16,740
+of one hundred fifty. Acceptance is blocked while
+
+23
+00:01:16,620 --> 00:01:19,260
+that request is open. The creator has to
+
+24
+00:01:19,140 --> 00:01:21,240
+publish a new revision linked to the request.
+
+25
+00:01:26,030 --> 00:01:28,170
+The new offer is two hundred ten dollars.
+
+26
+00:01:28,560 --> 00:01:31,460
+The buyer sees the change and accepts revision
+
+27
+00:01:31,500 --> 00:01:34,280
+two separately. This is an agreement on the
+
+28
+00:01:34,160 --> 00:01:35,880
+work. It is still not a payment.
+
+29
+00:01:41,030 --> 00:01:44,000
+These original PayPal records show an earlier sandbox
+
+30
+00:01:43,880 --> 00:01:47,160
+order for one hundred twenty dollars. It is
+
+31
+00:01:47,040 --> 00:01:49,200
+waiting for the payer to act. It is
+
+32
+00:01:49,080 --> 00:01:51,960
+historical evidence, not payment for this walkthrough.
+
+33
+00:01:55,030 --> 00:01:58,320
+Now the simulated checkout runs creation, approval checking,
+
+34
+00:01:58,820 --> 00:02:01,780
+and the final payment as separate steps. We
+
+35
+00:02:01,660 --> 00:02:05,120
+deliberately lose the last response. Checking the saved
+
+36
+00:02:05,000 --> 00:02:08,560
+action recovers the original result. No second payment
+
+37
+00:02:08,440 --> 00:02:09,200
+is sent.
+
+38
+00:02:18,030 --> 00:02:20,360
+Scope is about a clear agreement before payment.
+
+39
+00:02:21,280 --> 00:02:24,080
+Real capture and signed delivery are still unverified.
+
+40
+00:02:25,220 --> 00:02:27,540
+The source code and complete local rehearsal are
+
+41
+00:02:27,420 --> 00:02:27,840
+public.
