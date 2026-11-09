@@ -13,6 +13,108 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+const removalLabels={request:'I saved any copy I need and want to pause this workspace for content removal.',consent:'I agree to remove this exact saved workspace content, with the stated minimal records retained.',admit:'I understand locking this agreed removal cannot be withdrawn, even if recovery is needed.',purge:'Remove the workspace content now. I understand the stated minimal records and separate retention boundaries remain.',withdraw:'I want to cancel this removal review and resume work.'};
+async function privacyPanel(page){const panel=page.locator('#scope-content-erasure');await expect(panel).toBeVisible();if(await panel.getAttribute('open')===null)await panel.locator('summary').click();await panel.getByRole('button',{name:'Refresh removal status',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('Saved removal status loaded.');return panel;}
+async function requestRemoval(page){const panel=await privacyPanel(page);await panel.getByLabel(removalLabels.request,{exact:true}).check();await panel.getByRole('button',{name:'Request content removal',exact:true}).click();await expect(panel.getByText('Editing is paused.',{exact:false})).toBeVisible();return panel;}
+async function consentRemoval(panel){await panel.getByLabel(removalLabels.consent,{exact:true}).check();await panel.getByRole('button',{name:'Agree to content removal',exact:true}).click();await expect(panel.getByText('Your agreement is recorded.',{exact:true})).toBeVisible();}
+async function lockRemoval(panel){await panel.getByLabel(removalLabels.admit,{exact:true}).check();await panel.getByRole('button',{name:'Lock agreed removal',exact:true}).click();await expect(panel.getByText('Removal is locked.',{exact:false})).toBeVisible();await expect(panel.getByLabel(removalLabels.purge,{exact:true})).toBeEnabled();}
+async function soloRemovalReady(page){const panel=await requestRemoval(page);await consentRemoval(panel);await lockRemoval(panel);return panel;}
+
+test('the production-disabled capability exposes no content-removal controls',async({browser})=>{
+ const f=await fixture(browser);try{const page=await f.page('creator');await create(page);await expect(page.locator('#scope-content-erasure')).toHaveCount(0);expect(f.app.erasureCounts).toEqual({request:0,consent:0,withdraw:0,admit:0,purge:0,ledgerWrites:0,ledgerReads:0});expect(f.external).toEqual([]);}finally{await f.close();}
+});
+
+test('privacy review refuses unsaved edits, pauses ordinary writes and can be explicitly cancelled',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator');await create(page);let panel=await privacyPanel(page);await page.getByLabel('All-in price (USD)',{exact:true}).fill('180.00');await expect(panel.getByLabel(removalLabels.request,{exact:true})).toBeDisabled();expect(f.app.erasureCounts.request).toBe(0);
+  await page.getByRole('button',{name:'Discard unsaved changes',exact:true}).click();panel=await requestRemoval(page);await expect(page.getByLabel('What you will deliver',{exact:true})).toBeDisabled();await expect(page.getByRole('button',{name:'Publish exact offer',exact:true})).toBeDisabled();
+  await panel.getByRole('button',{name:'Review account download options',exact:true}).click();await expect(page.getByRole('button',{name:'Download account data',exact:true})).toBeEnabled();
+  await panel.getByLabel(removalLabels.withdraw,{exact:true}).check();await panel.getByRole('button',{name:'Cancel removal request',exact:true}).click();await expect(panel.getByText('The earlier review was cancelled.',{exact:false})).toBeVisible();await expect(page.getByLabel('What you will deliver',{exact:true})).toBeEnabled();expect(f.app.erasureCounts.withdraw).toBe(1);expect(f.app.erasureCounts.ledgerWrites).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('both joined members explicitly agree before locking and removing the exact workspace',async({browser},testInfo)=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const merchant=await f.page('creator'),id=await create(merchant,'Private removal illustration');await fill(merchant);await publish(merchant,1);
+  const buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await expect(buyer.getByRole('heading',{name:'Private removal illustration',exact:true})).toBeVisible();await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.getByRole('status',{name:'Workspace status',exact:true})).toContainText('Current saved offer loaded');
+  await expect(merchant.getByRole('heading',{name:'Buyer has joined',exact:true})).toBeVisible();
+  let panel=await requestRemoval(merchant);await consentRemoval(panel);await expect(panel.getByRole('button',{name:'Lock agreed removal',exact:true})).toHaveCount(0);const buyerPanel=await privacyPanel(buyer);await consentRemoval(buyerPanel);
+  panel=await privacyPanel(merchant);await lockRemoval(panel);await merchant.setViewportSize({width:390,height:844});await merchant.getByRole('button',{name:'Content removal',exact:true}).click();expect(await merchant.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);const navBox=await merchant.locator('.workspace-nav').boundingBox(),summaryBox=await panel.locator('summary').boundingBox();expect(summaryBox.y).toBeGreaterThanOrEqual(navBox.y+navBox.height);await testInfo.attach('bilateral-removal-confirmation-owned',{body:await merchant.screenshot(),contentType:'image/png'});
+  await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(merchant.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await expect(merchant.getByRole('heading',{name:'Private removal illustration',exact:true})).toHaveCount(0);
+  await buyer.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(buyer.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await expect(buyer.getByRole('heading',{name:'The complete conversation',exact:true})).toHaveCount(0);
+  const saved=await f.app.store('creator').readContentErasure(id);expect(saved.contentErased).toBe(true);expect(f.app.erasureCounts).toMatchObject({request:1,consent:2,admit:1,purge:1,ledgerWrites:1});expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('a member acting from stale removal controls sees the already-erased workspace without another intent',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const merchant=await f.page('creator');await create(merchant,'Shared completed removal');const buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await expect(buyer.getByRole('heading',{name:'Shared completed removal',exact:true})).toBeVisible();await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.getByRole('status',{name:'Workspace status',exact:true})).toContainText('Current saved offer loaded');
+  await expect(merchant.getByRole('heading',{name:'Buyer has joined',exact:true})).toBeVisible();
+  let panel=await requestRemoval(merchant);await consentRemoval(panel);await consentRemoval(await privacyPanel(buyer));panel=await privacyPanel(merchant);await lockRemoval(panel);const stale=await privacyPanel(buyer);await expect(stale.getByLabel(removalLabels.purge,{exact:true})).toBeEnabled();
+  await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(merchant.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await stale.getByLabel(removalLabels.purge,{exact:true}).check();await stale.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(buyer.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await expect(buyer.getByRole('heading',{name:'Shared completed removal',exact:true})).toHaveCount(0);expect(f.app.erasureCounts.purge).toBe(2);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('lost lock reply clears content and saved agreement summary; reload recovers metadata without resending',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator'),id=await create(page,'Private content before original lock');await fill(page);await publish(page,1);
+  const overview=page.getByRole('complementary',{name:'Saved agreement overview',exact:true});await expect(overview).toContainText('Revision 1 · USD 145.00');
+  const panel=await requestRemoval(page);await consentRemoval(panel);f.app.lose('/erasure/admit');await panel.getByLabel(removalLabels.admit,{exact:true}).check();await panel.getByRole('button',{name:'Lock agreed removal',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Private content before original lock',exact:true})).toHaveCount(0);await expect(overview).toHaveCount(0);
+  const reads=[];page.on('request',r=>{if(r.method()==='GET'&&new URL(r.url()).pathname==='/api/v1/workspaces/'+id)reads.push(r.url());});await page.reload();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal locked',exact:true})).toBeVisible();await expect(panel.getByLabel(removalLabels.purge,{exact:true})).toBeEnabled();expect(reads).toEqual([]);expect(await f.app.payloadsAbsent(id)).toBe(false);expect(f.app.erasureCounts).toMatchObject({admit:1,purge:0,ledgerWrites:1});
+  await expect(overview).toHaveCount(0);await expect(page.getByText('USD 145.00',{exact:false})).toHaveCount(0);
+  await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await expect(overview).toHaveCount(0);expect(f.app.erasureCounts).toMatchObject({admit:1,purge:1,ledgerWrites:1});expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('lost purge reply clears private content and reload recovers only the original operation',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator'),id=await create(page,'Unconfirmed removal private title'),panel=await soloRemovalReady(page);f.app.lose('/erasure/purge');await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Unconfirmed removal private title',exact:true})).toHaveCount(0);await expect(page.getByRole('heading',{name:'The complete conversation',exact:true})).toHaveCount(0);
+  const reads=[];page.on('request',r=>{if(r.method()==='GET'&&new URL(r.url()).pathname==='/api/v1/workspaces/'+id)reads.push(r.url());});await page.reload();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await page.getByRole('link',{name:'Back to workspaces',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();expect(reads).toEqual([]);
+  await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();expect(reads).toEqual([]);expect(f.app.erasureCounts.purge).toBe(1);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('an unreceived purge remains clear across reload and persisted-page restoration without replay',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator'),id=await create(page,'Private original remains on server'),panel=await soloRemovalReady(page);await page.route('**/api/v1/workspaces/'+id+'/erasure/purge',route=>route.abort());await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();
+  const reads=[];page.on('request',r=>{if(r.method()==='GET'&&new URL(r.url()).pathname==='/api/v1/workspaces/'+id)reads.push(r.url());});await page.reload();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await page.evaluate(()=>dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true})));await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByRole('status',{name:'Workspace status',exact:true})).toContainText('No completed action is recorded yet');expect(reads).toEqual([]);expect(f.app.erasureCounts.purge).toBe(0);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(await f.app.payloadsAbsent(id)).toBe(false);await expect(f.app.store('creator').read(id)).rejects.toMatchObject({code:'workspace_erasure_locked'});expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('a held private download reply cannot restore text or create a file after final removal',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator'),id=await create(page,'Do not restore this private title');await fill(page);await publish(page,1);const panel=await requestRemoval(page);await consentRemoval(panel);const downloads=[];page.on('download',d=>downloads.push(d));const held=f.app.hold('/api/v1/workspaces/'+id,{method:'GET'});
+  await page.getByRole('button',{name:'Download saved record',exact:true}).click();await held.started;await lockRemoval(panel);await expect(page.getByRole('heading',{name:'Do not restore this private title',exact:true})).toHaveCount(0);await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();held.release();await page.waitForLoadState('networkidle');expect(downloads).toEqual([]);await expect(page.getByRole('heading',{name:'The complete conversation',exact:true})).toHaveCount(0);expect(f.app.erasureCounts.purge).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('privacy consent requires reading the saved version covered by the current review',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const merchant=await f.page('creator'),id=await create(merchant),buyer=await f.page('buyer',new URL(await merchant.getByLabel('Private review link').inputValue()).pathname);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await expect(buyer.getByRole('heading',{name:'The complete conversation',exact:true})).toBeVisible();
+  const store=f.app.store('creator'),saved=await store.read(id);await store.replaceSource(id,{requestId:require('node:crypto').randomUUID(),expectedVersion:saved.source.version,messages:[...saved.source.messages,{id:'B9',role:'buyer',text:'Newer invented saved conversation for removal review.'}]});await merchant.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(merchant.getByText('Newer invented saved conversation for removal review.',{exact:true})).toBeVisible();await requestRemoval(merchant);
+  const panel=await privacyPanel(buyer);await expect(panel.getByLabel(removalLabels.consent,{exact:true})).toBeDisabled();await expect(panel.getByText('Refresh the saved offer to read the version covered by this review before agreeing.',{exact:true})).toBeVisible();
+  await buyer.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(buyer.getByText('Newer invented saved conversation for removal review.',{exact:true})).toBeVisible();await expect(panel.getByLabel(removalLabels.consent,{exact:true})).toBeEnabled();expect(f.app.erasureCounts.consent).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('changing the authenticated account invalidates an earlier privacy checkbox before posting consent',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator');await create(page,'Account-bound private removal');const panel=await requestRemoval(page);await panel.getByLabel(removalLabels.consent,{exact:true}).check();await page.context().addCookies([{name:'scope_fixture_actor',value:'buyer',url:f.app.origin}]);await panel.getByRole('button',{name:'Agree to content removal',exact:true}).click();await expect(page.getByText('buyer@invented.example',{exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Account-bound private removal',exact:true})).toHaveCount(0);expect(f.app.erasureCounts.consent).toBe(0);expect(f.app.erasureCounts.ledgerWrites).toBe(0);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('a recovery write hold permits reading retained removal status while blocking a new decision',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator');await create(page,'Read-only removal history');const panel=await soloRemovalReady(page);f.app.pauseWrites();await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('This decision is not confirmed. Refresh removal status before deciding again.');await expect(panel.getByRole('button',{name:'Refresh removal status',exact:true})).toBeEnabled();await panel.getByRole('button',{name:'Refresh removal status',exact:true}).click();await expect(panel.getByRole('status')).toHaveText('Saved removal status loaded.');await expect(panel.getByLabel(removalLabels.purge,{exact:true})).toBeDisabled();expect(f.app.erasureCounts.purge).toBe(0);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('a recovery hold after final confirmation clears the view without completing or replaying a purge',async({browser})=>{
+ const f=await fixture(browser,{erasure:true});try{
+  const page=await f.page('creator'),id=await create(page,'Held removal private title'),panel=await soloRemovalReady(page);await page.route('**/api/v1/workspaces/'+id+'/erasure/purge',route=>{f.app.pauseWrites();return route.continue();});await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Held removal private title',exact:true})).toHaveCount(0);expect((await f.app.store('creator').readContentErasure(id)).contentErased).toBe(false);expect(f.app.erasureCounts.purge).toBe(1);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('saved agreement overview follows the reviewed revision without treating acceptance as payment',async({browser},testInfo)=>{
  const f=await fixture(browser,{checkout:true});try{
   const creator=await f.page('creator');const id=await create(creator);

@@ -12,6 +12,7 @@ import {createWebhookStore} from '../server/webhook-store.mjs';
 import {signedWebhookFixture} from './fixtures/webhook.mjs';
 import {createPaypalTokens} from '../server/paypal-tokens.mjs';
 import {descriptor} from '../server/checkout-contract.mjs';
+import {createErasureLedger} from '../server/erasure-ledger.mjs';
 
 // An explicitly named, empty, loopback CI database only. Never infer a hosted
 // connection string or apply DDL to NETLIFY_DB_URL / any developer database.
@@ -718,4 +719,253 @@ test('current Payments v2 declines, refund changes and hyphenated Orders approva
     if(type.startsWith('PAYMENT.REFUND.'))event.resource={id:'AUTHOREDREFUND',links:[{rel:'up',href:'https://api.sandbox.paypal.com/v2/payments/captures/'+completed.checkout.captureId}],amount:{currency_code:'USD',value:'20.00'}};
     assert.equal((await handler(signed.request(event))).status,200);const state=await store.readCheckout(f.id);assert.equal(state.checkout.state,'needs_review');assert.equal(state.canCapture,false);assert.ok(state.checkout.notifications.some(e=>e.type===type));
   }
+});
+
+function erasureFixtureLedger(){
+ const objects=new Map();let admits=0;
+ const ledger=createErasureLedger({openStore:()=>({set:async(key,value,options)=>{assert.equal(options.onlyIfNew,true);if(objects.has(key))return {modified:false};objects.set(key,value);return {modified:true};},get:async key=>objects.has(key)?new Response(objects.get(key)).body:null})});
+ return {objects,get admits(){return admits;},ledger:{read:ledger.read,admit:async value=>{admits++;assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname='scope_test' AND state='idle in transaction'")).rows[0].n,0);return ledger.admit(value);}}};
+}
+function erasureStore(f,actorId,ledger,extra={}){return createWorkspaceStore({pool,getPrincipal:async()=>f.principals?.[actorId]||{id:actorId},contentErasureEnabled:true,erasureLedger:ledger,...extra});}
+async function erasureRequest(store,id){const w=await store.read(id);return {requestId:randomUUID(),sourceVersion:w.source.version,sourceBinding:w.source.binding,revision:w.currentQuote?.revision||0,buyerJoined:w.buyerJoined,confirmation:'request-workspace-content-erasure'};}
+const erasureConsent=id=>({requestId:randomUUID(),erasureRequestId:id,confirmation:'consent-to-this-workspace-content-erasure'});
+const erasureWithdraw=id=>({requestId:randomUUID(),erasureRequestId:id,confirmation:'withdraw-this-content-erasure-request'});
+const erasureAdmit=id=>({requestId:randomUUID(),erasureRequestId:id,confirmation:'admit-this-irreversible-content-erasure-intent'});
+const erasurePurge=view=>({requestId:randomUUID(),erasureRequestId:view.request.id,erasureClaimId:view.request.claim.id,confirmation:'erase-the-admitted-workspace-content'});
+async function admittedErasure(f,ledger){
+ const merchant=erasureStore(f,f.merchantId,ledger),buyer=erasureStore(f,f.buyerId,ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));if((await merchant.read(f.id)).buyerJoined)await buyer.consentContentErasure(f.id,erasureConsent(rid));
+ return {merchant,buyer,admitted:await merchant.admitContentErasure(f.id,erasureAdmit(rid))};
+}
+async function fullErasureFixture(){
+ const f=await invitedFixture();await f.buyer.joinInvitation(f.id,joining());
+ const first=(await f.merchant.publish(f.id,publication(f))).quote,change=await f.buyer.requestChanges(f.id,changeRequest(first,{note:'PRIVATE_NOTE_SENTINEL'}));
+ await f.merchant.publish(f.id,publication(f,{expectedRevision:1,responseTo:change.changeRequest.id}));
+ const ai=aiFixture(f,{available:()=>true,generate:async()=>({state:'received',raw:aiRaw(),usage:{privateText:'PRIVATE_USAGE_SENTINEL'}})});await ai.requestDraft(f.id,aiInput(f));
+ const next=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'PRIVATE_SOURCE_SENTINEL'}]});
+ const latest=(await f.merchant.publish(f.id,publication(f,{expectedRevision:2,sourceVersion:2,sourceBinding:next.source.binding}))).quote;await f.buyer.accept(f.id,acceptance(latest));
+ return f;
+}
+async function erasurePayloadRows(id){
+ const specs=[['workspaces','id'],['sources','workspace_id'],['quotes','workspace_id'],['invitations','workspace_id'],['change_requests','workspace_id'],['ai_claims','workspace_id'],['operations','workspace_id']];const rows={};
+ for(const [table,key]of specs)rows[table]=(await pool.query('SELECT to_jsonb(t) AS value FROM scope_app.'+table+' t WHERE '+key+'=$1'+(table==='operations'?" AND kind NOT LIKE 'erasure-%'":'')+' ORDER BY to_jsonb(t)::text',[id])).rows.map(x=>x.value);
+ rows.ai_receipts=(await pool.query('SELECT to_jsonb(r) AS value FROM scope_app.ai_receipts r JOIN scope_app.ai_claims c ON c.id=r.claim_id WHERE c.workspace_id=$1 ORDER BY r.claim_id',[id])).rows.map(x=>x.value);return rows;
+}
+
+test('atomic erasure removes every payload copy while retaining bindings, decisions, quota facts and original operations',async()=>{
+ const f=await fullErasureFixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id),copy=await f.merchant.accountRecord();
+ assert.equal(before.sources.length,2);assert.equal(before.quotes.length,3);assert.equal(before.ai_receipts[0].usage.privateText,'PRIVATE_USAGE_SENTINEL');
+ const input=erasurePurge(privacy.admitted),done=await privacy.merchant.purgeContentErasure(f.id,input);assert.equal(done.contentErased,true);assert.equal(done.request.state,'content_erased');assert.ok(done.erasedAt);assert.equal(l.admits,1);
+ const after=await erasurePayloadRows(f.id),payloads={workspaces:['project_name'],sources:['messages'],quotes:['fields','total_cents','currency'],invitations:['recipient_email'],change_requests:['note'],ai_claims:['request_json'],ai_receipts:['raw_text','usage'],operations:['result']};
+ for(const [table,cols]of Object.entries(payloads)){
+  assert.equal(after[table].length,before[table].length);for(const row of after[table])for(const col of cols)assert.equal(row[col],null,table+'.'+col);
+  const retained=rows=>rows.map(row=>JSON.stringify(Object.fromEntries(Object.entries(row).filter(([key])=>!cols.includes(key))))).sort();assert.deepEqual(retained(after[table]),retained(before[table]));
+ }
+ assert.equal((await pool.query('SELECT scope_app.content_erasure_payloads_absent($1) AS absent',[f.id])).rows[0].absent,true);
+ for(const store of [f.merchant,f.buyer]){await assert.rejects(store.read(f.id),code('workspace_content_erased'));await assert.rejects(store.readCheckout(f.id),code('workspace_content_erased'));assert.equal((await store.list()).some(x=>x.workspaceId===f.id),false);assert.equal((await collectionItems(store,'workspacePage')).some(x=>x.workspaceId===f.id),false);}
+ await assert.rejects(f.merchant.readDraft(f.id),code('workspace_content_erased'));await assert.rejects(f.merchant.readInvitation(f.id),code('workspace_content_erased'));await assert.rejects(f.stranger.read(f.id),code('workspace_not_found'));
+ for(const page of copy.pages){const redacted=await f.merchant.accountRecordPage(page.cursor);assert.equal(/PRIVATE_(?:NOTE|SOURCE|USAGE)_SENTINEL/.test(JSON.stringify(redacted)),false);}
+ const exported=(await accountCopy(f.merchant)).sections;assert.equal(exported.conversations[0].messages,null);assert.equal(exported.offers[0].fields,null);assert.equal(exported.aiReviews[0].requestText,null);assert.equal(exported.aiReviews[0].resultText,null);assert.equal(exported.invitations[0].recipientEmail,null);
+ const old=before.operations[0],status=await (old.actor_id===f.merchantId?f.merchant:f.buyer).operationStatus(old.request_id);assert.equal(status.contentErased,true);assert.equal(status.operationRetained,true);
+ assert.deepEqual(await privacy.merchant.purgeContentErasure(f.id,input),done);assert.equal((await privacy.buyer.readContentErasure(f.id)).contentErased,true);assert.equal(l.admits,1);
+ await assert.rejects(pool.query('UPDATE scope_app.sources SET messages=$2 WHERE workspace_id=$1',[f.id,JSON.stringify(messages)]),code('23514'));await assert.rejects(pool.query('DELETE FROM scope_app.sources WHERE workspace_id=$1',[f.id]),code('23514'));
+ await assert.rejects(pool.query('UPDATE scope_app.content_erasure_completions SET claim_id=claim_id WHERE workspace_id=$1',[f.id]),code('23514'));
+});
+
+test('omitting any payload table rejects completion and rolls back every redaction',async()=>{
+ const updates=['UPDATE scope_app.workspaces','UPDATE scope_app.sources','UPDATE scope_app.quotes','UPDATE scope_app.invitations','UPDATE scope_app.change_requests','UPDATE scope_app.ai_claims','UPDATE scope_app.ai_receipts','UPDATE scope_app.operations'];
+ for(const omitted of updates){
+  const f=await fullErasureFixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id);
+  let failure;const partialPool={connect:async()=>{const c=await pool.connect();return {query:async(sql,args)=>{if(sql.startsWith(omitted))return {rows:[],rowCount:0};try{return await c.query(sql,args);}catch(e){failure=e.message;throw e;}},release:discard=>c.release(discard)};}};
+  const partial=erasureStore(f,f.merchantId,l.ledger,{pool:partialPool});await assert.rejects(partial.purgeContentErasure(f.id,erasurePurge(privacy.admitted)),code('workspace_storage_unconfirmed'));
+  assert.equal(failure,'scope_content_erasure_incomplete',omitted);assert.deepEqual(await erasurePayloadRows(f.id),before,omitted);assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.content_erasure_completions WHERE workspace_id=$1',[f.id])).rows[0].n,0);assert.equal(l.admits,1);
+ }
+});
+
+test('a lost purge commit reply recovers the original completion without a new intent or duplicate workspace',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger);let active=false,lost=false,reads=0;
+ const uncertainPool={connect:async()=>{const c=await pool.connect();return {query:async(sql,args)=>{const result=await c.query(sql,args);if(sql.startsWith('INSERT INTO scope_app.content_erasure_completions'))active=true;if(sql==='COMMIT'&&active&&!lost){lost=true;throw Error('AUTHORED_PURGE_COMMIT_REPLY_LOST');}return result;},release:discard=>c.release(discard)};}};
+ const ledger={...l.ledger,read:async id=>{reads++;return l.ledger.read(id);}},uncertain=erasureStore(f,f.merchantId,ledger,{pool:uncertainPool}),input=erasurePurge(privacy.admitted);
+ await assert.rejects(uncertain.purgeContentErasure(f.id,input),code('workspace_storage_unconfirmed'));assert.equal(reads,1);assert.equal((await privacy.merchant.operationStatus(input.requestId)).contentErased,true);
+ const recovered=await erasureStore(f,f.merchantId,ledger).purgeContentErasure(f.id,input);assert.equal(recovered.contentErased,true);assert.equal(reads,1);assert.equal(l.admits,1);
+ await assert.rejects(f.merchant.create(f.input),code('workspace_content_erased'));assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.workspaces WHERE merchant_id=$1',[f.merchantId])).rows[0].n,1);
+});
+
+test('purge requires the original matching external intent and refuses unavailable, absent or conflicting observations',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id);
+ for(const read of [async()=>{throw Error('AUTHORED_NO_STORAGE');},async()=>null,async()=>({...privacy.admitted.request.claim.intent,claimId:randomUUID()})]){
+  const store=erasureStore(f,f.merchantId,{...l.ledger,read});await assert.rejects(store.purgeContentErasure(f.id,erasurePurge(privacy.admitted)),code('workspace_erasure_ledger_unconfirmed'));assert.deepEqual(await erasurePayloadRows(f.id),before);
+ }
+ await assert.rejects(privacy.merchant.purgeContentErasure(f.id,{...erasurePurge(privacy.admitted),confirmation:'automatic'}),code('workspace_erasure_confirmation_required'));
+ await assert.rejects(erasureStore(f,randomUUID(),l.ledger).purgeContentErasure(f.id,erasurePurge(privacy.admitted)),code('workspace_not_found'));assert.equal(l.admits,1);
+});
+
+test('a confirmed original intent with a lost admission reply can qualify purge without re-admitting',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),ledger={read:l.ledger.read,admit:async intent=>{await l.ledger.admit(intent);throw Error('AUTHORED_INTENT_REPLY_LOST');}},privacy=await admittedErasure(f,ledger);
+ assert.equal(privacy.admitted.request.state,'admitted_pending_ledger');assert.equal(privacy.admitted.ledgerObservation,'matching');assert.equal(l.admits,1);
+ const done=await privacy.merchant.purgeContentErasure(f.id,erasurePurge(privacy.admitted));assert.equal(done.contentErased,true);assert.equal(l.admits,1);
+});
+
+test('erasure retains AI source authority across a new workspace and rejects unadmitted null payloads',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),provider={available:()=>true,generate:async()=>({state:'received',raw:aiRaw()})},ai=aiFixture(f,provider);await ai.requestDraft(f.id,aiInput(f));
+ await assert.rejects(pool.query('UPDATE scope_app.workspaces SET project_name=NULL WHERE id=$1',[f.id]),code('23514'));await assert.rejects(pool.query('UPDATE scope_app.sources SET messages=NULL WHERE workspace_id=$1',[f.id]),code('23514'));
+ const privacy=await admittedErasure(f,l.ledger);await privacy.merchant.purgeContentErasure(f.id,erasurePurge(privacy.admitted));
+ const made=await f.merchant.create({...f.input,requestId:randomUUID()}),copy={...f,id:made.workspaceId,created:made};await assert.rejects(aiFixture(copy,provider).requestDraft(copy.id,aiInput(copy)),code('ai_source_already_reviewed'));
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.ai_claims WHERE actor_id=$1',[f.merchantId])).rows[0].n,1);
+ await assert.rejects(pool.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages) VALUES($1,2,$2,NULL)',[copy.id,'a'.repeat(64)]),code('23514'));
+});
+
+test('recovery of an earlier withdrawn request still reports a later workspace erasure',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),request=await erasureRequest(merchant,f.id),old=await merchant.requestContentErasure(f.id,request),withdrawal=erasureWithdraw(old.request.id);await merchant.withdrawContentErasure(f.id,withdrawal);
+ const privacy=await admittedErasure(f,l.ledger),done=await privacy.merchant.purgeContentErasure(f.id,erasurePurge(privacy.admitted));
+ for(const requestId of [request.requestId,withdrawal.requestId]){const status=await merchant.operationStatus(requestId);assert.equal(status.request.state,'withdrawn');assert.equal(status.contentErased,true);assert.equal(status.erasedAt,done.erasedAt);}
+});
+
+test('the authenticated privacy HTTP flow requires both members and recovers the exact completed purge',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),privacy=erasureStore(f,f.merchantId,l.ledger),handler=user=>createApiHandler({getUser:async()=>({id:user}),getPool:()=>pool,contentErasureEnabled:true,erasureLedger:l.ledger});
+ const invoke=(actor,action,data)=>handler(actor)(new Request('https://scope.example/api/v1/workspaces/'+f.id+'/erasure'+(action?'/'+action:''),{method:data?'POST':'GET',headers:data?{Origin:'https://scope.example','Content-Type':'application/json','X-Scope-Action':'explicit-user-action','X-Scope-Session':actor}:{},...(data?{body:JSON.stringify(data)}:{})}));
+ assert.equal((await invoke(randomUUID(),'',null)).status,404);const request=await erasureRequest(privacy,f.id),created=await invoke(f.merchantId,'request',request);assert.equal(created.status,200);assert.equal(created.headers.get('cache-control'),'private, no-store');const rid=(await created.json()).data.request.id;
+ assert.equal((await invoke(f.merchantId,'admit',erasureAdmit(rid))).status,409);assert.equal((await invoke(f.merchantId,'consent',erasureConsent(rid))).status,200);assert.equal((await invoke(f.buyerId,'consent',erasureConsent(rid))).status,200);
+ const admitted=await invoke(f.buyerId,'admit',erasureAdmit(rid));assert.equal(admitted.status,200);const input=erasurePurge((await admitted.json()).data),done=await invoke(f.merchantId,'purge',input);assert.equal(done.status,200);assert.equal((await done.json()).data.contentErased,true);assert.equal(l.admits,1);
+ assert.equal((await invoke(f.buyerId,'',null)).status,200);assert.equal((await invoke(f.merchantId,'purge',input)).status,200);assert.equal(l.admits,1);
+ const old=await handler(f.merchantId)(new Request('https://scope.example/api/v1/workspaces/'+f.id));assert.equal(old.status,410);assert.equal((await old.json()).error.code,'workspace_content_erased');
+ const recovered=await handler(f.merchantId)(new Request('https://scope.example/api/v1/operations/'+input.requestId));assert.equal(recovered.status,200);assert.equal((await recovered.json()).data.contentErased,true);
+});
+
+test('privacy copies exhaust decision pages for members and never grant an invited recipient membership',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger);
+ for(let i=0;i<7;i++){const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));await merchant.withdrawContentErasure(f.id,erasureWithdraw(rid));}
+ const privacy=await admittedErasure(f,l.ledger);await privacy.merchant.purgeContentErasure(f.id,erasurePurge(privacy.admitted));
+ for(const store of [f.merchant,f.buyer]){const rows=(await accountCopy(store)).sections.privacyHistory;assert.equal(rows.length,34);assert.ok(rows.some(x=>x.kind==='content-redacted'));assert.ok(rows.some(x=>x.kind==='withdrawal'));assert.equal(rows.filter(x=>x.kind==='consent').length,16);for(const row of rows.filter(x=>Object.hasOwn(x,'ownDecision')))assert.equal(row.operationRequestId!==null,row.ownDecision);assert.equal(rows.some(x=>Object.hasOwn(x,'intent')),false);}
+ assert.deepEqual((await accountCopy(f.stranger)).sections.privacyHistory,[]);
+ const invited=await invitedFixture(),pending=await admittedErasure(invited,l.ledger);assert.equal(pending.admitted.request.buyerJoined,false);assert.deepEqual((await accountCopy(invited.buyer)).sections.privacyHistory,[]);assert.ok((await accountCopy(invited.merchant)).sections.privacyHistory.length>0);
+});
+
+test('a recovery hold during original-intent observation or SQL redaction cannot complete a new purge',async()=>{
+ for(const during of ['observation','transaction']){
+  const f=await fixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id);let held=false;
+  const guardedPool={connect:async()=>{const c=await pool.connect();return {query:async(sql,args)=>{const result=await c.query(sql,args);if(during==='transaction'&&sql.startsWith('UPDATE scope_app.sources'))held=true;return result;},release:discard=>c.release(discard)};}};
+  const ledger={...l.ledger,read:async id=>{const value=await l.ledger.read(id);if(during==='observation')held=true;return value;}},store=erasureStore(f,f.merchantId,ledger,{pool:guardedPool,canWrite:()=>!held});
+  await assert.rejects(store.purgeContentErasure(f.id,erasurePurge(privacy.admitted)),code('recovery_read_only'));assert.deepEqual(await erasurePayloadRows(f.id),before);assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.content_erasure_completions WHERE workspace_id=$1',[f.id])).rows[0].n,0);assert.equal(l.admits,1);
+ }
+});
+
+test('a hold after external admission preserves the original claim and intent without writing a new receipt',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger();let held=false;const ledger={read:l.ledger.read,admit:async intent=>{const saved=await l.ledger.admit(intent);held=true;return saved;}},merchant=erasureStore(f,f.merchantId,ledger,{canWrite:()=>!held}),buyer=erasureStore(f,f.buyerId,ledger);
+ const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const input=erasureAdmit(rid);
+ await assert.rejects(merchant.admitContentErasure(f.id,input),code('recovery_read_only'));assert.equal(l.admits,1);const saved=await merchant.operationStatus(input.requestId);assert.equal(saved.request.state,'admitted_pending_ledger');assert.equal((await merchant.readContentErasure(f.id)).ledgerObservation,'matching');assert.equal(l.admits,1);
+});
+
+test('account-copy cutoffs preserve PostgreSQL microseconds without dropping the final saved row',async()=>{
+ const f=await fixture(),id=randomUUID(),prefix=new Date().toISOString().slice(0,19),saved=prefix+'.123350Z',at=prefix+'.123400Z',c=await pool.connect();
+ try{await c.query('BEGIN');await c.query('INSERT INTO scope_app.workspaces(id,merchant_id,buyer_id,created_at) VALUES($1,$2,$3,$4)',[id,f.merchantId,f.buyerId,saved]);await c.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages,created_at) VALUES($1,1,$2,$3,$4)',[id,f.created.source.binding,JSON.stringify(messages),saved]);await c.query('COMMIT');}finally{c.release();}
+ const frozenPool={connect:async()=>{const c=await pool.connect();return {query:(sql,args)=>c.query(sql.startsWith('SELECT')&&sql.includes(' AS at')&&sql.includes('clock_timestamp()')?sql.replace('clock_timestamp()',"TIMESTAMPTZ '"+at+"'"):sql,args),release:discard=>c.release(discard)};}};
+ const store=createWorkspaceStore({pool:frozenPool,getPrincipal:async()=>({id:f.merchantId})}),manifest=await store.accountRecord(),start=manifest.pages.find(x=>x.section==='workspaces');assert.equal(manifest.startedAt,at);
+ assert.equal(JSON.parse(Buffer.from(start.cursor,'base64url').toString()).at,at);const page=await store.accountRecordPage(start.cursor);assert.ok(page.entries.some(x=>x.workspaceId===id));assert.equal(page.readAt,at);
+ const legacy=JSON.parse(Buffer.from(start.cursor,'base64url').toString());legacy.at=prefix+'.124Z';assert.ok((await store.accountRecordPage(Buffer.from(JSON.stringify(legacy)).toString('base64url'))).entries.some(x=>x.workspaceId===id));
+});
+
+test('irreversible claims withhold current payloads, exports and old operation responses before any purge',async()=>{
+ const f=await fullErasureFixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),before=await erasurePayloadRows(f.id);
+ assert.equal(privacy.admitted.contentErasureLocked,true);assert.equal(privacy.admitted.contentErased,false);assert.ok(before.sources[0].messages);
+ await assert.rejects(f.merchant.read(f.id),code('workspace_erasure_locked'));await assert.rejects(f.merchant.readDraft(f.id),code('workspace_erasure_locked'));await assert.rejects(f.buyer.readCheckout(f.id),code('workspace_erasure_locked'));
+ const rows=(await accountCopy(privacy.merchant)).sections;assert.equal(rows.conversations[0].messages,null);assert.equal(rows.conversations[0].contentWithheld,true);assert.equal(rows.offers[0].fields,null);assert.equal(rows.aiReviews[0].requestText,null);assert.equal(rows.invitations[0].recipientEmail,null);assert.ok(rows.privacyHistory.length>0);
+ for(const op of before.operations){const store=op.actor_id===f.merchantId?privacy.merchant:privacy.buyer,status=await store.operationStatus(op.request_id);assert.equal(status.operationRetained,true);assert.equal(status.contentErasureLocked,true);assert.equal(/PRIVATE_(?:NOTE|SOURCE|USAGE)_SENTINEL/.test(JSON.stringify(status)),false);}
+ assert.deepEqual(await erasurePayloadRows(f.id),before);assert.equal(l.admits,1);
+});
+
+test('pausing new erasure retains the external read fence and metadata-only GET routes',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),privacy=await admittedErasure(f,l.ledger),paused=createWorkspaceStore({pool,getPrincipal:async()=>({id:f.merchantId}),contentErasureEnabled:false,contentReadFenceEnabled:true,erasureLedger:l.ledger});
+ await assert.rejects(paused.read(f.id),code('workspace_erasure_locked'));assert.equal((await paused.readContentErasure(f.id)).contentErasureLocked,true);await assert.rejects(paused.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
+ let calls=0;const handler=createApiHandler({getUser:async()=>({id:f.merchantId}),getPool:()=>{calls++;return pool;},contentErasureEnabled:false,contentReadFenceEnabled:true,erasureLedger:l.ledger});const base='https://scope.example/api/v1/workspaces/'+f.id+'/erasure';assert.equal((await handler(new Request(base))).status,200);const before=calls;assert.equal((await handler(new Request(base+'/request',{method:'POST',headers:{Origin:'https://scope.example','Content-Type':'application/json','X-Scope-Action':'explicit-user-action','X-Scope-Session':f.merchantId},body:'{"contentReadFenceEnabled":false}'}))).status,404);assert.equal(calls,before);assert.equal(l.admits,1);
+});
+
+test('a principal is resolved once per public invocation and retained through asynchronous fence checks',async()=>{
+ const f=await fixture();let reads=0;const ledger={read:async()=>{await Promise.resolve();return null;}},store=createWorkspaceStore({pool,getPrincipal:async()=>({id:++reads===1?f.merchantId:f.buyerId}),contentReadFenceEnabled:true,erasureLedger:ledger});
+ assert.equal((await store.read(f.id)).role,'merchant');assert.equal(reads,1);await assert.rejects(store.readDraft(f.id),code('workspace_role_required'));assert.equal(reads,2);
+});
+
+test('content erasure admission is disabled by default and exposes no HTTP route',async()=>{
+ const f=await fixture();await assert.rejects(f.merchant.readContentErasure(f.id),code('workspace_erasure_unavailable'));await assert.rejects(f.merchant.requestContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
+ await assert.rejects(f.merchant.purgeContentErasure(f.id,{}),code('workspace_erasure_unavailable'));
+ let pools=0;const handler=createApiHandler({getUser:async()=>({id:f.merchantId}),getPool:()=>{pools++;return pool;}});const r=await handler(new Request('https://scope.example/api/v1/workspaces/'+f.id+'/erasure'));assert.equal(r.status,404);assert.equal(pools,0);
+});
+test('erasure review pauses ordinary API-store and direct SQL writes while preserving saved reads and account copies',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),stranger=erasureStore(f,randomUUID(),l.ledger);f.quote=(await f.merchant.publish(f.id,publication(f))).quote;
+ const input=await erasureRequest(merchant,f.id);await assert.rejects(stranger.requestContentErasure(f.id,input),code('workspace_not_found'));await assert.rejects(merchant.requestContentErasure(f.id,{...input,actorId:f.buyerId}),code('workspace_request_invalid'));
+ const view=await merchant.requestContentErasure(f.id,input);assert.equal(view.request.state,'awaiting_consent');assert.equal(view.request.paused,true);assert.equal(view.request.ownConsent,false);assert.equal(view.contentErased,false);assert.deepEqual(await merchant.requestContentErasure(f.id,input),view);
+ await assert.rejects(f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'An authored later request.'}]}),code('workspace_erasure_pending'));await assert.rejects(f.buyer.accept(f.id,acceptance(f.quote)),code('workspace_erasure_pending'));
+ await assert.rejects(pool.query('UPDATE scope_app.workspaces SET project_name=$2 WHERE id=$1',[f.id,'Forbidden new label']),code('23514'));
+ await assert.rejects(pool.query('INSERT INTO scope_app.sources(workspace_id,version,binding,messages) VALUES($1,2,$2,$3)',[f.id,'a'.repeat(64),JSON.stringify(messages)]),code('23514'));
+ assert.equal((await f.merchant.read(f.id)).erasurePending,true);assert.deepEqual((await f.merchant.read(f.id)).source.messages,messages);assert.ok((await accountCopy(f.buyer)).sections.conversations.some(x=>x.workspaceId===f.id));assert.equal(l.admits,0);
+});
+test('both joined members must consent before one durable claim and one external intent, with GET-only recovery',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger);const r=await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id)),rid=r.request.id;
+ await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(rid)),code('workspace_erasure_members_required'));const first=erasureConsent(rid);await merchant.consentContentErasure(f.id,first);await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(rid)),code('workspace_erasure_members_required'));
+ await buyer.consentContentErasure(f.id,erasureConsent(rid));assert.equal((await merchant.readContentErasure(f.id)).request.state,'ready_to_admit');const admission=erasureAdmit(rid),done=await merchant.admitContentErasure(f.id,admission);
+ assert.equal(done.request.state,'recorded_pending_purge');assert.equal(done.ledgerObservation,'matching');assert.equal(done.contentErased,false);assert.equal(l.admits,1);assert.equal(l.objects.size,1);
+ const intent=done.request.claim.intent;assert.equal(intent.workspaceId,f.id);assert.equal(intent.merchantId,f.merchantId);assert.equal(intent.buyerId,f.buyerId);assert.equal(intent.claimId,done.request.claim.id);assert.equal(intent.sourceBinding,f.created.source.binding);
+ await merchant.admitContentErasure(f.id,admission);assert.equal((await merchant.operationStatus(admission.requestId)).request.claim.id,done.request.claim.id);assert.equal((await buyer.readContentErasure(f.id)).ledgerObservation,'matching');assert.equal(l.admits,1);
+ await assert.rejects(buyer.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_locked'));await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(rid)),code('workspace_erasure_admitted'));
+ assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.content_erasure_claims WHERE workspace_id=$1',[f.id])).rows[0].n,1);await assert.rejects(f.merchant.read(f.id),code('workspace_erasure_locked'));
+});
+test('a missing external reply retains the original erasure claim and never resends its intent',async()=>{
+ const f=await fixture();let writes=0;const unavailable={read:async()=>null,admit:async()=>{writes++;throw Error('PRIVATE_AUTHORED_STORAGE_FAILURE');}},merchant=erasureStore(f,f.merchantId,unavailable),buyer=erasureStore(f,f.buyerId,unavailable);
+ const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const input=erasureAdmit(rid),pending=await merchant.admitContentErasure(f.id,input);
+ assert.equal(pending.request.state,'admitted_pending_ledger');assert.equal(pending.ledgerObservation,'absent');assert.equal(pending.contentErased,false);await merchant.admitContentErasure(f.id,input);await merchant.operationStatus(input.requestId);await merchant.readContentErasure(f.id);assert.equal(writes,1);
+ await assert.rejects(merchant.withdrawContentErasure(f.id,erasureWithdraw(rid)),code('workspace_erasure_locked'));await assert.rejects(merchant.requestContentErasure(f.id,{requestId:randomUUID(),sourceVersion:1,sourceBinding:f.created.source.binding,revision:0,buyerJoined:true,confirmation:'request-workspace-content-erasure'}),code('workspace_erasure_locked'));
+});
+test('withdrawing erasure resumes ordinary work and a replacement request cannot inherit earlier consent',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));const withdrawal=erasureWithdraw(rid);assert.equal((await buyer.withdrawContentErasure(f.id,withdrawal)).request.state,'withdrawn');assert.equal((await buyer.withdrawContentErasure(f.id,withdrawal)).request.state,'withdrawn');assert.equal((await f.merchant.read(f.id)).erasurePending,false);
+ await f.merchant.publish(f.id,publication(f));const next=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request;assert.notEqual(next.id,rid);assert.equal(next.ownConsent,false);assert.equal(next.allMembersConsented,false);await assert.rejects(merchant.admitContentErasure(f.id,erasureAdmit(next.id)),code('workspace_erasure_members_required'));assert.equal(l.admits,0);
+});
+test('expired unadmitted review resumes writes and its old consent cannot authorize admission',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger,{erasureRequestTtlMs:100});const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await new Promise(r=>setTimeout(r,150));assert.equal((await merchant.readContentErasure(f.id)).request.state,'expired');await assert.rejects(merchant.consentContentErasure(f.id,erasureConsent(rid)),code('workspace_erasure_request_inactive'));await f.merchant.publish(f.id,publication(f));assert.equal(l.admits,0);
+});
+test('an unjoined invitation needs only its creator and an intended recipient cannot consent as a member',async()=>{
+ const f=await invitedFixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await assert.rejects(buyer.consentContentErasure(f.id,erasureConsent(rid)),code('workspace_not_found'));await assert.rejects(f.buyer.joinInvitation(f.id,joining()),code('workspace_erasure_pending'));await merchant.consentContentErasure(f.id,erasureConsent(rid));const admitted=await merchant.admitContentErasure(f.id,erasureAdmit(rid));assert.equal(admitted.request.claim.intent.buyerId,null);assert.equal(admitted.request.state,'recorded_pending_purge');assert.equal(l.admits,1);
+});
+test('checkout history and unresolved AI require review; withdrawing erasure cannot reset an AI case',async()=>{
+ const paid=await checkoutFixture(),p=checkoutStore(paid,checkoutProvider()),l=erasureFixtureLedger();await p.startCheckout(paid.id,checkoutInput(paid));const payPrivacy=erasureStore(paid,paid.merchantId,l.ledger);await assert.rejects(payPrivacy.requestContentErasure(paid.id,await erasureRequest(payPrivacy,paid.id)),code('workspace_erasure_review_required'));
+ const f=await fixture();let release,entered;const gate=new Promise(r=>release=r),started=new Promise(r=>entered=r);const ai=aiFixture(f,{available:()=>true,generate:async()=>{entered();await gate;return {state:'received',raw:'AUTHORED_INVALID_OUTPUT'};}}),input=aiInput(f),active=ai.requestDraft(f.id,input);await started;
+ try{const privacy=erasureStore(f,f.merchantId,l.ledger);await assert.rejects(privacy.requestContentErasure(f.id,await erasureRequest(privacy,f.id)),code('workspace_erasure_review_required'));release();await active;
+ const rid=(await privacy.requestContentErasure(f.id,await erasureRequest(privacy,f.id))).request.id;await privacy.withdrawContentErasure(f.id,erasureWithdraw(rid));await assert.rejects(ai.requestDraft(f.id,{...input,requestId:randomUUID()}),code('ai_source_already_reviewed'));assert.equal(l.admits,0);
+ }finally{release();await active;}
+});
+test('erasure claims and receipts cannot be forged before consent or rewritten after admission',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_claims(id,request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4,$5)',[randomUUID(),rid,f.id,f.merchantId,randomUUID()]),code('23514'));
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const done=await merchant.admitContentErasure(f.id,erasureAdmit(rid));
+ await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_ledger_receipts(claim_id,intent) VALUES($1,$2)',[done.request.claim.id,{...done.request.claim.intent,merchantId:randomUUID()}]),code('23514'));
+ for(const [table,column,value]of [['content_erasure_requests','id',rid],['content_erasure_consents','request_id',rid],['content_erasure_claims','request_id',rid],['content_erasure_ledger_receipts','claim_id',done.request.claim.id]])await assert.rejects(pool.query('UPDATE scope_app.'+table+' SET '+column+'='+column+' WHERE '+column+'=$1',[value]),code('23514'));
+});
+test('joining races an erasure snapshot without assigning a buyer inside a paused review',async()=>{
+ const f=await invitedFixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),input=await erasureRequest(merchant,f.id);const results=await Promise.allSettled([merchant.requestContentErasure(f.id,input),f.buyer.joinInvitation(f.id,joining())]);assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(l.admits,0);
+});
+test('an existing ordinary operation cannot stand in for an erasure request, consent, withdrawal or claim',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),publish=publication(f);await f.merchant.publish(f.id,publish);
+ const createId=(await pool.query("SELECT request_id FROM scope_app.operations WHERE workspace_id=$1 AND kind='create'",[f.id])).rows[0].request_id;
+ const rejected=e=>e.code==='23514'&&e.message==='scope_content_erasure_operation_rejected';
+ await assert.rejects(pool.query("WITH stamp AS (SELECT date_trunc('milliseconds',clock_timestamp()) AS at) INSERT INTO scope_app.content_erasure_requests(id,workspace_id,actor_id,operation_request_id,merchant_id,buyer_id,source_version,source_binding,revision,created_at,expires_at) SELECT $1,$2,$3,$4,$3,$5,1,$6,1,at,at+interval '24 hours' FROM stamp",[randomUUID(),f.id,f.merchantId,createId,f.buyerId,f.created.source.binding]),rejected);
+ const rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ for(const table of ['content_erasure_consents','content_erasure_withdrawals'])await assert.rejects(pool.query('INSERT INTO scope_app.'+table+'(request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4)',[rid,f.id,f.merchantId,publish.requestId]),rejected);
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));
+ await assert.rejects(pool.query('INSERT INTO scope_app.content_erasure_claims(id,request_id,workspace_id,actor_id,operation_request_id) VALUES($1,$2,$3,$4,$5)',[randomUUID(),rid,f.id,f.merchantId,publish.requestId]),rejected);
+ assert.equal((await merchant.readContentErasure(f.id)).request.state,'ready_to_admit');assert.equal(l.admits,0);
+});
+
+test('withdrawal and irreversible admission serialize on the workspace without replacing a claim',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));const outcomes=await Promise.allSettled([merchant.admitContentErasure(f.id,erasureAdmit(rid)),buyer.withdrawContentErasure(f.id,erasureWithdraw(rid))]);assert.equal(outcomes.filter(r=>r.status==='fulfilled').length,1);assert.ok(l.admits<=1);
+});
+
+test('an ambiguous erasure-claim commit cannot dispatch an external intent and recovery preserves the original claim',async()=>{
+ const f=await fixture(),l=erasureFixtureLedger(),merchant=erasureStore(f,f.merchantId,l.ledger),buyer=erasureStore(f,f.buyerId,l.ledger),rid=(await merchant.requestContentErasure(f.id,await erasureRequest(merchant,f.id))).request.id;
+ await merchant.consentContentErasure(f.id,erasureConsent(rid));await buyer.consentContentErasure(f.id,erasureConsent(rid));let lose=true;
+ const uncertainPool={connect:async()=>{const client=await pool.connect();let claimed=false;return {query:async(...args)=>{const result=await client.query(...args);if(args[0].startsWith('INSERT INTO scope_app.content_erasure_claims'))claimed=true;if(args[0]==='COMMIT'&&claimed&&lose){lose=false;throw Error('AUTHORED_COMMIT_REPLY_LOST');}return result;},release:discard=>client.release(discard)};}};
+ const uncertain=erasureStore(f,f.merchantId,l.ledger,{pool:uncertainPool}),input=erasureAdmit(rid);await assert.rejects(uncertain.admitContentErasure(f.id,input),code('workspace_storage_unconfirmed'));assert.equal(l.admits,0);
+ const found=await merchant.operationStatus(input.requestId);assert.equal(found.request.state,'admitted_pending_ledger');assert.ok(found.request.claim.id);await merchant.admitContentErasure(f.id,input);assert.equal(l.admits,0);assert.equal((await merchant.readContentErasure(f.id)).request.claim.id,found.request.claim.id);
 });

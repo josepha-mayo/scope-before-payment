@@ -22,7 +22,7 @@ export function createCollectionPages({transaction,principal,fail}){
       const params=[user.id,cursor?.at??null,cursor?.id??null];
       let rows;
       if(kind==='workspaces'){
-        rows=(await client.query(`SELECT w.id,w.project_name,w.merchant_id,w.current_revision,w.current_source_version,${stamp('w.created_at')} FROM scope_app.workspaces w WHERE (w.merchant_id=$1 OR w.buyer_id=$1) AND ($2::timestamptz IS NULL OR (w.created_at,w.id)<($2::timestamptz,$3::uuid)) ORDER BY w.created_at DESC,w.id DESC LIMIT 26`,params)).rows;
+        rows=(await client.query(`SELECT w.id,w.project_name,w.merchant_id,w.current_revision,w.current_source_version,${stamp('w.created_at')} FROM scope_app.workspaces w WHERE (w.merchant_id=$1 OR w.buyer_id=$1) AND NOT EXISTS(SELECT 1 FROM scope_app.content_erasure_completions e WHERE e.workspace_id=w.id) AND ($2::timestamptz IS NULL OR (w.created_at,w.id)<($2::timestamptz,$3::uuid)) ORDER BY w.created_at DESC,w.id DESC LIMIT 26`,params)).rows;
       }else{
         params.push(user.email);
         rows=(await client.query(`SELECT i.workspace_id AS id,w.project_name,i.expires_at,${stamp('i.created_at')} FROM scope_app.invitations i JOIN scope_app.workspaces w ON w.id=i.workspace_id WHERE i.recipient_email=$4 AND w.buyer_id IS NULL AND w.merchant_id<>$1 AND i.expires_at>now() AND NOT EXISTS(SELECT 1 FROM scope_app.invitation_revocations r WHERE r.workspace_id=i.workspace_id) AND ($2::timestamptz IS NULL OR (i.created_at,i.workspace_id)<($2::timestamptz,$3::uuid)) ORDER BY i.created_at DESC,i.workspace_id DESC LIMIT 26`,params)).rows;

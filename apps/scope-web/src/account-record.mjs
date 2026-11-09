@@ -1,4 +1,4 @@
-export const accountSections=['workspaces','conversations','offers','decisions','invitations','aiReviews','paymentHistory','notifications','activity'];
+export const accountSections=['workspaces','conversations','offers','decisions','invitations','aiReviews','paymentHistory','notifications','activity','privacyHistory'];
 const cursor=value=>typeof value==='string'&&/^[A-Za-z0-9_-]{1,1500}$/.test(value);
 // No partial file, browser storage, write endpoint, provider call or automatic
 // retry. Each bounded page is serialized once; final account confirmation is
@@ -33,7 +33,7 @@ export async function collectAccountRecord({actor,load,check,progress=()=>{},rec
 }
 
 export function mountAccountRecord({parent,h,button,context,load}){
-  const panel=h('details'),status=h('p');status.setAttribute('role','status');status.setAttribute('aria-label','Account data download status');
+  const panel=h('details'),status=h('p');panel.id='scope-account-data';status.setAttribute('role','status');status.setAttribute('aria-label','Account data download status');
   let busy=false,run=0,disposed=false,displayActor,displayEpoch;
   const download=button('Download account data',async()=>{
     if(download.disabled)return;const own=++run,before=context();busy=true;actions();status.textContent='Reading your saved account data…';
@@ -47,7 +47,7 @@ export function mountAccountRecord({parent,h,button,context,load}){
     finally{if(own===run)busy=false;actions();}
   },true);
   const cancel=button('Cancel account download',()=>{run++;busy=false;status.textContent='Account download cancelled. No partial file was downloaded.';actions();},true);
-  panel.append(h('summary','Your account data'),h('p','Download your saved workspace history, older conversations, offers, decisions, your AI reviews and recorded payment observations. Includes private invitation details you are allowed to read. Unsaved edits, credentials and hosting backups are excluded. This copy does not erase data or prove current payment.'),download,cancel,status);parent.append(panel);
+  panel.append(h('summary','Your account data'),h('p','Download your saved workspace history, older conversations, offers, decisions, privacy requests and confirmations, your AI reviews and recorded payment observations. Includes private invitation details you are allowed to read. Unsaved edits, credentials and hosting backups are excluded. Content already removed from the workspace is not restored by this copy. This download does not erase data or prove current payment.'),download,cancel,status);parent.append(panel);
   function actions(){const c=context();if(c.user!==displayActor||c.epoch!==displayEpoch){run++;busy=false;status.textContent='';displayActor=c.user;displayEpoch=c.epoch;}panel.hidden=disposed||!c.user;download.disabled=disposed||busy||!c.user||c.blocked;cancel.hidden=!busy;}
   actions();return {actions,dispose(){disposed=true;run++;busy=false;panel.remove();}};
 }
