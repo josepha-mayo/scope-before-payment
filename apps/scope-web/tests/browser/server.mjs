@@ -1,9 +1,6 @@
-import http from 'node:http';
-import { Readable } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import pg from 'pg';
 import { createApiHandler } from '../../server/api.mjs';
 import { createWorkspaceStore } from '../../server/workspaces.mjs';
@@ -13,6 +10,7 @@ import {createWebhookHandler} from '../../server/paypal-webhook.mjs';
 import {createWebhookStore} from '../../server/webhook-store.mjs';
 import {createRecoveryPolicy,guardDraftProvider,guardCheckoutProvider} from '../../server/recovery.mjs';
 import {createErasureLedger} from '../../server/erasure-ledger.mjs';
+import {createNodeHttpServer} from '../../server/node-http.mjs';
 
 export async function startHostedFixture({checkout=false,webhook=false,draftGenerate,erasure=false,rehearsal=false}={}){
   const connection=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing');
@@ -27,28 +25,31 @@ export async function startHostedFixture({checkout=false,webhook=false,draftGene
   const draftProvider={available:()=>true,generate:async body=>{counts.ai++;if(draftGenerate)return draftGenerate(body);return {state:'received',raw:JSON.stringify({fields:{deliverable:{text:'One raven illustration as SVG and PNG.',refs:['r1']},usage:{text:'Bookshop website, 250 bags and organic Instagram.',refs:['r1']},delivery:{text:'January 8, 2027.',refs:['r1']},revisions:{text:'Two rounds.',refs:['r1']},terms:null},exclusions:{state:'proposed',text:'No paid adverts or resale; no printing services.',refs:['r1']},questions:[{field:'terms',question:'Confirm payment timing.',refs:['r1']}]})};}};
   const checkoutProvider=checkout?{available:()=>true,context:()=>({profile:'authored-checkout-fixture-v1',merchantId:'Y53RSV36EJCGG',payerId:'ABCD23456789E',origin:'https://scope-before-payment.netlify.app'}),
     ...Object.fromEntries(['create','check','capture'].map(kind=>[kind,async({attempt,authorize})=>{if(!authorize())throw Error('fixture_dispatch_not_authorized');checkoutCounts[kind]++;if(kind==='capture')capturedCases.add(attempt.id);const body=inventedOrder(attempt,kind==='create'?'PAYER_ACTION_REQUIRED':capturedCases.has(attempt.id)?'COMPLETED':'APPROVED');if(webhook||rehearsal){body.id=attempt.id.replaceAll('-','').toUpperCase();body.links[0].href='https://www.sandbox.paypal.com/checkoutnow?token='+body.id;if(body.status==='COMPLETED')body.purchase_units[0].payments.captures[0].id=attempt.captureId.replaceAll('-','').toUpperCase();}return {status:kind==='check'?200:201,body};}]))}:undefined;
-  const server=http.createServer((incoming,outgoing)=>{(async()=>{
-    const origin='http://127.0.0.1:'+server.address().port,url=new URL(incoming.url,origin);
-    if(rehearsal&&['/__rehearsal.js','/__rehearsal.css'].includes(url.pathname)){
-      const file=url.pathname.endsWith('.js')?'rehearsal-banner.mjs':'rehearsal.css';
-      outgoing.writeHead(200,{'Content-Type':file.endsWith('.css')?'text/css':'text/javascript','Cache-Control':'no-store'});outgoing.end(await readFile(new URL(file,import.meta.url)));return;
-    }
-    if(url.pathname==='/api/paypal/webhook'&&webhookHandler){
-      const req=new Request(url,{method:incoming.method,headers:incoming.headers,...(!['GET','HEAD'].includes(incoming.method)?{body:Readable.toWeb(incoming),duplex:'half'}:{})});
-      const result=await webhookHandler(req);outgoing.writeHead(result.status,Object.fromEntries(result.headers));outgoing.end(Buffer.from(await result.arrayBuffer()));return;
-    }
-    if(url.pathname.startsWith('/api/')){
-      const actor=/(?:^|;\s*)scope_fixture_actor=(creator|buyer)(?:;|$)/.exec(incoming.headers.cookie||'')?.[1];
+  // All HTTP/browser journeys exercise the portable transport. Authored
+  // identities/providers remain exclusively in this isolated fixture.
+  const server=createNodeHttpServer({getOrigin:()=> 'http://127.0.0.1:'+server.address().port,
+    staticDirectory:build,indexFile:'tests/browser/index.html',
+    staticResponse:async request=>{
+      const pathname=new URL(request.url).pathname;
+      if(!rehearsal||!['/__rehearsal.js','/__rehearsal.css'].includes(pathname))return null;
+      const file=pathname.endsWith('.js')?'rehearsal-banner.mjs':'rehearsal.css';
+      return new Response(await readFile(new URL(file,import.meta.url)),{headers:{'Content-Type':file.endsWith('.css')?'text/css':'text/javascript','Cache-Control':'no-store'}});
+    },
+    transformIndex:rehearsal?bytes=>bytes.toString('utf8').replace('</body>','<script type="module" src="/__rehearsal.js"></script></body>'):undefined,
+    webhook:webhook?request=>webhookHandler(request):undefined,
+    api:async req=>{
+      const url=new URL(req.url),actor=/(?:^|;\s*)scope_fixture_actor=(creator|buyer)(?:;|$)/.exec(req.headers.get('cookie')||'')?.[1];
       const handler=createApiHandler({getUser:async()=>users[actor]||null,getPool:()=>pool,canWrite:recovery.writable,contentErasureEnabled:erasure,erasureLedger,draftProvider:guardDraftProvider(draftProvider,recovery),checkoutProvider:checkoutProvider?guardCheckoutProvider(checkoutProvider,recovery):undefined});
-      const req=new Request(url,{method:incoming.method,headers:incoming.headers,...(!['GET','HEAD'].includes(incoming.method)?{body:Readable.toWeb(incoming),duplex:'half'}:{})});
-      if(incoming.method==='POST'){if(url.pathname==='/api/v1/workspaces')counts.create++;for(const name of ['publish','join','accept'])if(url.pathname.endsWith('/'+name))counts[name]++;if(url.pathname.endsWith('/request-changes'))counts.changes++;const privacy=/\/erasure\/(request|consent|withdraw|admit|purge)$/.exec(url.pathname);if(privacy)erasureCounts[privacy[1]]++;}
+      if(req.method==='POST'){if(url.pathname==='/api/v1/workspaces')counts.create++;for(const name of ['publish','join','accept'])if(url.pathname.endsWith('/'+name))counts[name]++;if(url.pathname.endsWith('/request-changes'))counts.changes++;const privacy=/\/erasure\/(request|consent|withdraw|admit|purge)$/.exec(url.pathname);if(privacy)erasureCounts[privacy[1]]++;}
       const result=await handler(req);
-      const held=interception;if(held&&incoming.method===held.method&&url.pathname.endsWith(held.suffix)){interception=null;held.entered();if(held.lose){outgoing.writeHead(result.status,Object.fromEntries(result.headers));outgoing.flushHeaders();outgoing.write('{"data":');setImmediate(()=>outgoing.destroy());return;}await held.wait;}
-      outgoing.writeHead(result.status,Object.fromEntries(result.headers));outgoing.end(Buffer.from(await result.arrayBuffer()));return;
+      const held=interception;if(held&&req.method===held.method&&url.pathname.endsWith(held.suffix)){
+        interception=null;held.entered();
+        if(held.lose){void result.body?.cancel();return new Response(new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode('{"data":'));setImmediate(()=>controller.error(Error('owned lost reply')));}}),{status:result.status,headers:result.headers});}
+        await held.wait;
+      }
+      return result;
     }
-    const asset=/^\/assets\/[A-Za-z0-9_.-]+$/.test(url.pathname),file=asset?path.join(build,url.pathname):path.join(build,'tests/browser/index.html');
-    let bytes=await readFile(file);if(rehearsal&&!asset)bytes=Buffer.from(bytes.toString('utf8').replace('</body>','<script type="module" src="/__rehearsal.js"></script></body>'));outgoing.writeHead(200,{'Content-Type':file.endsWith('.css')?'text/css':file.endsWith('.js')?'text/javascript':'text/html; charset=utf-8','Cache-Control':'no-store','Content-Security-Policy':"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'"});outgoing.end(bytes);
-  })().catch(()=>{if(!outgoing.headersSent)outgoing.writeHead(503);outgoing.end('Owned browser fixture unavailable');});});
+  });
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   const origin='http://127.0.0.1:'+server.address().port;
   if(signed)webhookHandler=createWebhookHandler({origin,read:k=>signed.env[k],canWrite:recovery.writable,fetch:async()=>new Response(signed.cert),save:createWebhookStore({getPool:()=>pool}).save});

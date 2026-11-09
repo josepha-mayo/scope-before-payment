@@ -17,6 +17,14 @@ Joining, copying suggestions, publishing and accepting never request payment.
 
 ## Try it
 
+[Watch the revised 2:32 prototype demo](https://www.youtube.com/watch?v=89WKFiUpklM)
+with Joseph's own consented, locally cloned voice, focused UI views and English
+captions. [View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
+The repeatable workflow uses authored accounts, an AI replay and authored PayPal
+replies. Separate dated screenshots show a retained live Claude result and an
+original historical sandbox order response. Real capture and registered signed
+delivery remain unverified. See the [recording and edit notes](docs/REVIEW_CUT.md).
+
 [Hosted workspace](https://scope-before-payment.netlify.app) — sign in and use
 invented conversations. Identity, PostgreSQL persistence and Claude review are
 integrated. Hosted PayPal checkout is currently inactive; a real hosted sandbox
@@ -29,6 +37,8 @@ The source dashboard also [pages through workspace and invitation lists](docs/CO
 so memberships beyond the first 100 remain reachable.
 It also provides [read-only revision history and comparisons](docs/REVISION_REVIEW.md)
 before acceptance, including price, use-permission and source-only changes.
+The saved agreement overview distinguishes the current revision, buyer agreement
+and separate payment confirmation; these source improvements are not yet deployed.
 Creators can also [revoke an unused invitation](docs/INVITATION_REVOCATION.md)
 permanently before the buyer joins. This source feature is not yet deployed.
 

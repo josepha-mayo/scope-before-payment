@@ -55,11 +55,14 @@ test('a member acting from stale removal controls sees the already-erased worksp
  }finally{await f.close();}
 });
 
-test('lost lock reply clears content and reload recovers metadata without resending admission or purging',async({browser})=>{
+test('lost lock reply clears content and saved agreement summary; reload recovers metadata without resending',async({browser})=>{
  const f=await fixture(browser,{erasure:true});try{
-  const page=await f.page('creator'),id=await create(page,'Private content before original lock'),panel=await requestRemoval(page);await consentRemoval(panel);f.app.lose('/erasure/admit');await panel.getByLabel(removalLabels.admit,{exact:true}).check();await panel.getByRole('button',{name:'Lock agreed removal',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Private content before original lock',exact:true})).toHaveCount(0);
+  const page=await f.page('creator'),id=await create(page,'Private content before original lock');await fill(page);await publish(page,1);
+  const overview=page.getByRole('complementary',{name:'Saved agreement overview',exact:true});await expect(overview).toContainText('Revision 1 · USD 145.00');
+  const panel=await requestRemoval(page);await consentRemoval(panel);f.app.lose('/erasure/admit');await panel.getByLabel(removalLabels.admit,{exact:true}).check();await panel.getByRole('button',{name:'Lock agreed removal',exact:true}).click();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Private content before original lock',exact:true})).toHaveCount(0);await expect(overview).toHaveCount(0);
   const reads=[];page.on('request',r=>{if(r.method()==='GET'&&new URL(r.url()).pathname==='/api/v1/workspaces/'+id)reads.push(r.url());});await page.reload();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await page.getByRole('button',{name:'Check saved action',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal locked',exact:true})).toBeVisible();await expect(panel.getByLabel(removalLabels.purge,{exact:true})).toBeEnabled();expect(reads).toEqual([]);expect(await f.app.payloadsAbsent(id)).toBe(false);expect(f.app.erasureCounts).toMatchObject({admit:1,purge:0,ledgerWrites:1});
-  await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();expect(f.app.erasureCounts).toMatchObject({admit:1,purge:1,ledgerWrites:1});expect(f.external).toEqual([]);
+  await expect(overview).toHaveCount(0);await expect(page.getByText('USD 145.00',{exact:false})).toHaveCount(0);
+  await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Workspace content removed',exact:true})).toBeVisible();await expect(overview).toHaveCount(0);expect(f.app.erasureCounts).toMatchObject({admit:1,purge:1,ledgerWrites:1});expect(f.external).toEqual([]);
  }finally{await f.close();}
 });
 
@@ -109,6 +112,23 @@ test('a recovery write hold permits reading retained removal status while blocki
 test('a recovery hold after final confirmation clears the view without completing or replaying a purge',async({browser})=>{
  const f=await fixture(browser,{erasure:true});try{
   const page=await f.page('creator'),id=await create(page,'Held removal private title'),panel=await soloRemovalReady(page);await page.route('**/api/v1/workspaces/'+id+'/erasure/purge',route=>{f.app.pauseWrites();return route.continue();});await panel.getByLabel(removalLabels.purge,{exact:true}).check();await panel.getByRole('button',{name:'Remove workspace content',exact:true}).click();await expect(page.getByRole('heading',{name:'Content removal is unconfirmed',exact:true})).toBeVisible();await expect(page.getByRole('button',{name:'Check saved action',exact:true})).toBeVisible();await expect(page.getByRole('heading',{name:'Held removal private title',exact:true})).toHaveCount(0);expect((await f.app.store('creator').readContentErasure(id)).contentErased).toBe(false);expect(f.app.erasureCounts.purge).toBe(1);expect(f.app.erasureCounts.ledgerWrites).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
+test('saved agreement overview follows the reviewed revision without treating acceptance as payment',async({browser},testInfo)=>{
+ const f=await fixture(browser,{checkout:true});try{
+  const creator=await f.page('creator');const id=await create(creator);
+  const overview=creator.getByRole('complementary',{name:'Saved agreement overview',exact:true});
+  await expect(overview).toContainText('No published offer');await fill(creator);await publish(creator,1);
+  await expect(overview).toContainText('Revision 1 · USD 145.00');await expect(overview).toContainText('Awaiting buyer review');
+  const invite=new URL(await creator.getByLabel('Private review link').inputValue()).pathname;
+  const buyer=await f.page('buyer',invite);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await changes(buyer);
+  await creator.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(overview).toContainText('Changes requested');
+  await creator.getByLabel('Revision allowance',{exact:true}).fill('Three rounds.');await creator.getByLabel('I reviewed the buyer’s open request. Publish this revision as my response.',{exact:true}).check();await publish(creator,2);
+  await buyer.getByRole('button',{name:'Refresh saved offer',exact:true}).click();const buyerOverview=buyer.getByRole('complementary',{name:'Saved agreement overview',exact:true});await expect(buyerOverview).toContainText('Revision 2 · USD 145.00');await expect(buyerOverview).toContainText('Awaiting buyer review');
+  await accept(buyer);await expect(buyerOverview).toContainText('Revision 2 accepted');await expect(buyerOverview).toContainText('Separate confirmation below');expect(f.app.checkoutCounts).toEqual({create:0,check:0,capture:0});
+  await buyer.screenshot({path:testInfo.outputPath('agreement-overview-desktop.png'),fullPage:false});
+  await buyer.setViewportSize({width:390,height:844});await expect(buyerOverview).toBeVisible();expect(await buyer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await buyer.screenshot({path:testInfo.outputPath('agreement-overview-mobile.png'),fullPage:false});expect(f.external).toEqual([]);
  }finally{await f.close();}
 });
 
