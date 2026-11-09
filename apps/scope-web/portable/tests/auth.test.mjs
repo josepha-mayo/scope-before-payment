@@ -269,3 +269,28 @@ test('even a verified matching GitHub email cannot implicitly link another provi
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_identity.accounts WHERE user_id=$1',[old.user.id])).rows[0].n,1);
   }finally{globalThis.fetch=deniedFetch;}
 });
+
+test('returning OAuth refreshes the bound account email and missing fresh verification removes old routing authority',async()=>{
+  const actor=randomUUID(),f=await fixture({legacyActor:actor}),boundary=createAuthBoundary({auth,origin:configuration.origin});
+  const changedEmail=randomUUID()+'@invented.example',deniedFetch=globalThis.fetch;let verified=true;
+  globalThis.fetch=async input=>{
+    const url=typeof input==='string'?input:input instanceof URL?input.href:input.url;
+    if(url==='https://github.com/login/oauth/access_token')return Response.json({access_token:'owned-returning-token',token_type:'bearer',scope:'user:email'});
+    if(url==='https://api.github.com/user')return Response.json({id:Number(f.providerSubject),login:'owned-returning',name:'Owned returning',email:changedEmail});
+    if(url==='https://api.github.com/user/emails')return Response.json([{email:changedEmail,primary:true,verified}]);
+    externalCalls++;throw Error('unexpected_provider_request');
+  };
+  async function signIn(peer){
+    const started=await boundary(authRequest('sign-in/social',{provider:'github'}),{remoteAddress:peer});assert.equal(started.status,200);
+    const state=new URL((await started.json()).url).searchParams.get('state'),cookie=started.headers.getSetCookie().find(x=>x.startsWith('__Secure-scope.state=')).split(';')[0];
+    return boundary(new Request(configuration.origin+'/api/auth/callback/github?code=owned-returning&state='+encodeURIComponent(state),{headers:{cookie}}),{remoteAddress:peer});
+  }
+  try{
+    const fresh=await signIn('192.0.2.110');assert.equal(fresh.headers.get('location'),configuration.origin+'/?signin=complete');
+    const current=await principal(f.login.headers).getUser();assert.equal(current.id,actor);assert.equal(current.email,changedEmail);assert.equal(current.emailVerified,true);assert.notEqual(current.email,f.user.email);
+    verified=false;const rejected=await signIn('192.0.2.111');assert.notEqual(rejected.headers.get('location'),configuration.origin+'/?signin=complete');
+    assert.equal(rejected.headers.getSetCookie().some(x=>x.startsWith('__Secure-scope.session_token=')&&!x.includes('Max-Age=0')),false);
+    const downgraded=await principal(f.login.headers).getUser();assert.equal(downgraded.id,actor);assert.equal(downgraded.emailVerified,false);assert.equal(downgraded.confirmedAt,null);
+    assert.equal((await pool.query('SELECT email_verified FROM scope_identity.users WHERE id=$1',[f.user.id])).rows[0].email_verified,false);
+  }finally{globalThis.fetch=deniedFetch;}
+});

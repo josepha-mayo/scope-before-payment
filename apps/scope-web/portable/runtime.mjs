@@ -24,7 +24,7 @@ export async function verifyMigratedSchema(pool,configuration){
   if(workspace.rows.length!==1)throw Error('runtime_existing_history_required');
 }
 export async function verifyReaderRole(pool){
-  const role=(await pool.query('SELECT rolsuper,rolcreaterole,rolcreatedb,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
+  const role=(await pool.query('SELECT rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
   if(!role||Object.values(role).some(value=>value!==false))throw Error('runtime_database_role_too_broad');
   const privileges=await pool.query("SELECT name,has_table_privilege(current_user,name,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS writable FROM unnest($1::text[]) AS name",[appTables.map(name=>'scope_app.'+name)]);
   if(privileges.rows.some(row=>row.writable))throw Error('runtime_database_role_too_broad');

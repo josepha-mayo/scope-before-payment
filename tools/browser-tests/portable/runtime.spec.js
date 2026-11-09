@@ -29,7 +29,7 @@ test('actual browser callback preserves creator ownership, source history and th
   await expect(page).toHaveURL(origin+'/workspace/'+metadata.workspaceId);
   await expect(page.getByRole('heading',{name:'Portable migration - owned history',exact:true})).toBeVisible();
   await expect(page.getByText('Owned private migration message for one heron.',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Publish this revision',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Publish exact offer',exact:true})).toBeDisabled();
   const me=await page.evaluate(async()=>{const response=await fetch('/api/v1/me');return {status:response.status,body:await response.json()};});expect(me.status).toBe(200);expect(me.body.actorId).toBe(metadata.actors.creator);expect(me.body.data.readOnly).toBe(true);
   expect(await page.evaluate(()=>document.cookie.includes('session_token'))).toBe(false);
   const held=await page.evaluate(async actor=>{const response=await fetch('/api/v1/workspaces',{method:'POST',headers:{'Content-Type':'application/json','X-Scope-Action':'explicit-user-action','X-Scope-Session':actor},body:'not parsed during hold'});return {status:response.status,body:await response.json()};},metadata.actors.creator);expect(held.status).toBe(503);expect(held.body.error.code).toBe('recovery_read_only');

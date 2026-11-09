@@ -27,7 +27,7 @@ export function createBrowserIdentity({location,history,channel,client=createAut
       const complete=values.length===1&&values[0]==='complete';
       // The OAuth code/state exchange ends on the server. Drop the callback
       // marker before any private route is restored; never echo error details.
-      url.searchParams.delete('signin');history.replaceState(null,'',url.pathname+url.search);
+      for(const key of ['signin','error','error_description'])url.searchParams.delete(key);history.replaceState(null,'',url.pathname+url.search);
       if(!complete)return {type:'oauth-error'};
       channel?.postMessage({type:'session-changed'});return {type:'oauth'};
     },
