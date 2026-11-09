@@ -17,6 +17,7 @@ import {createApiHandler} from '../../server/api.mjs';
 import {createWorkspaceStore} from '../../server/workspaces.mjs';
 import {createNodeHttpServer} from '../../server/node-http.mjs';
 import {createPortableApplication} from '../application.mjs';
+import {insertLegacyUser} from './legacy-user.mjs';
 
 const url=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing');
 assert.ok(['postgres:','postgresql:'].includes(url.protocol)&&['127.0.0.1','localhost'].includes(url.hostname)&&url.pathname==='/scope_test','An owned loopback /scope_test database is required');
@@ -39,7 +40,7 @@ test.before(async()=>{
 test.after(async()=>{globalThis.fetch=originalFetch;await pool.end();assert.equal(externalCalls,0,'No GitHub, AI or PayPal network requests');});
 let subjectCounter=9100000;
 async function fixture({verified=true,legacyActor=null,providerSubject=String(++subjectCounter)}={}){
-  const user=await helpers.saveUser(helpers.createUser({id:randomUUID(),email:randomUUID()+'@invented.example',emailVerified:verified}));
+  const user=await insertLegacyUser(pool,helpers.createUser({id:randomUUID(),email:randomUUID()+'@invented.example',emailVerified:verified}));
   await pool.query("INSERT INTO scope_identity.accounts(id,user_id,provider_id,provider_subject,created_at,updated_at) VALUES($1,$2,'github',$3,now(),now())",[randomUUID(),user.id,providerSubject]);
   if(legacyActor)await pool.query("INSERT INTO scope_identity.actor_links(provider,provider_subject,actor_id,created_via) VALUES('github',$1,$2,'legacy-migration')",[providerSubject,legacyActor]);
   const login=await helpers.login({userId:user.id,session:{scopeEpoch:'caller-value-must-be-ignored'}});

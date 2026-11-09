@@ -12,6 +12,7 @@ import {authOptions} from '../auth-options.mjs';
 import {createPortableAuth} from '../auth.mjs';
 import {createRequestPrincipal} from '../principal.mjs';
 import {createWorkspaceStore} from '../../server/workspaces.mjs';
+import {insertLegacyUser} from '../tests/legacy-user.mjs';
 
 const execute=promisify(execFile),hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const quoted=name=>{assert.match(name,/^[a-z][a-z0-9_]*$/);return '"'+name+'"';};
@@ -63,7 +64,7 @@ async function main(){
   const configuration={origin:'https://scope-owned.example',secret:randomBytes(32).toString('base64'),epoch:randomUUID(),clientId:'owned-client',clientSecret:'owned-secret'};
   phase='sdk_fixture';
   const testAuth=betterAuth({...authOptions({pool:source,configuration}),plugins:[testUtils()]}),helpers=(await testAuth.$context).test;
-  const user=await helpers.saveUser(helpers.createUser({email:randomUUID()+'@invented.example',emailVerified:true})),actor=randomUUID(),subject='999'+String(Date.now());
+  const user=await insertLegacyUser(source,helpers.createUser({email:randomUUID()+'@invented.example',emailVerified:true})),actor=randomUUID(),subject='999'+String(Date.now());
   await source.query("INSERT INTO scope_identity.accounts(id,user_id,provider_id,provider_subject,created_at,updated_at) VALUES($1,$2,'github',$3,now(),now())",[randomUUID(),user.id,subject]);
   await source.query("INSERT INTO scope_identity.actor_links(provider,provider_subject,actor_id,created_via) VALUES('github',$1,$2,'legacy-migration')",[subject,actor]);
   const login=await helpers.login({userId:user.id});
