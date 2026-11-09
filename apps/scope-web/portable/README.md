@@ -117,7 +117,7 @@ real service. The test utilities' database owner is not a production role.
 
 ## Verification
 
-With Docker and Node 24, `npm run test:portable:owned` creates a new PostgreSQL 17
+With Docker and Node 24, `npm run test:portable:owned` creates a new PostgreSQL 18
 container bound only to loopback, applies the application and identity schemas,
 runs the SDK/SQL/HTTP checks and the backup/restore drill, and removes the exact
 owned container after verifying its ID, name and nonce label. It never reads a
@@ -161,3 +161,41 @@ Official references: [Better Auth installation](https://better-auth.com/docs/ins
 [sessions](https://better-auth.com/docs/concepts/session-management),
 [PostgreSQL](https://better-auth.com/docs/adapters/postgresql),
 [security](https://better-auth.com/docs/reference/security).
+
+
+## Existing source database and portable AI preparation
+
+The existing native source was inspected on November 9 through the official
+Netlify CLI's explicit production connection with verified TLS. It runs
+PostgreSQL 18.6 and has ten applied migrations. Its `netlifydb_readonly` role
+lacks USAGE on the custom `scope_app` schema. A successful connection therefore
+does not establish a complete backup. The new committed read-only export
+migration grants that existing platform role only schema USAGE and table and
+sequence SELECT. It creates no credential, grants no application writes or
+sequence advancement, and leaves the dashboard's full-write switch off.
+It must reach Netlify through a normal reviewed deployment, never direct DDL.
+No native deployment or permission change has been performed by this release.
+Preserve the remaining shared hosting credits until the cutover is prepared.
+
+The portable qualification and restore tools now use PostgreSQL 18, matching
+that actual source version. The independent original local rehearsal retains
+its PostgreSQL 17 environment; it is not a native migration receipt.
+
+`server/ai-profiles.mjs` retains the exact original Claude request/validator and
+adds the existing strict non-price NVIDIA Nemotron 3.5 Lightning protocol as a
+separate immutable profile. Historical claims select their own stored profile;
+changing the configured provider does not reinterpret a stored request. Actor,
+workspace, site and source limits remain shared across profiles. Unknown
+profiles fail closed without loading credentials or minting dispatch authority.
+
+`server/nvidia-provider.mjs` prepares the fixed official NVIDIA route with one
+25-second total deadline, no retry, redirect or failover, bounded UTF-8 response
+handling, exact model/terminal-answer checks and duplicate-key rejection. Keys
+are loaded lazily by a trusted server callback and never returned to the browser.
+The runtime remains compiled read-only and does not construct this provider.
+Native credit availability, a real retained model result, server-secret
+provisioning and accurate provider-specific user consent remain activation gates.
+No authored provider response establishes actual NVIDIA availability.
+
+Official NVIDIA reference:
+https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-5-lightning-30b-a3b-infer

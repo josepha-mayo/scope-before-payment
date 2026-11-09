@@ -55,7 +55,7 @@ async function manifest(pool){
 async function main(){
   const url=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing'),container=process.env.SCOPE_AUTH_TEST_CONTAINER;
   assert.ok(['postgres:','postgresql:'].includes(url.protocol));assert.equal(url.hostname,'127.0.0.1');assert.equal(url.pathname,'/scope_test');assert.equal(url.username,'scope_fixture');assert.equal(url.search,'');assert.equal(url.hash,'');assert.match(container||'',/^[a-f0-9]{64}$/);
-  const details=JSON.parse(await docker('inspect',container))[0];assert.equal(details.Config.Image,'postgres:17');
+  const details=JSON.parse(await docker('inspect',container))[0];assert.equal(details.Config.Image,'postgres:18');
   const owned=details.Config.Labels?.['dev.scope.auth-test'];
   assert.ok(owned&&details.Name==='/scope-auth-test-'+owned||process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&url.port==='5432'&&url.password==='owned_ci_fixture_only');
   source=new pg.Pool({connectionString:url.href,max:3,connectionTimeoutMillis:3000});

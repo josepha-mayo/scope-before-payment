@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { prepareDraft, profile, model, sha } from './ai-protocol.mjs';
+import { sha } from './ai-protocol.mjs';
+import { draftProtocol,providerProtocol } from './ai-profiles.mjs';
 
 export function createDraftMethods({ transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider }) {
   async function owned(client,user,id,lock=false) {
@@ -13,18 +14,20 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
       FROM scope_app.ai_claims c JOIN scope_app.sources s ON s.workspace_id=c.workspace_id AND s.version=c.source_version
       LEFT JOIN scope_app.ai_receipts r ON r.claim_id=c.id
       WHERE c.workspace_id=$1 AND ($2::uuid IS NULL OR c.id=$2) ORDER BY c.created_at DESC,c.id DESC LIMIT 1`,[id,claimId])).rows[0];
-    const available=provider?.available()===true;
+    const configured=providerProtocol(provider),model=configured?.model??null;
+    const available=!!configured&&provider?.available()===true;
     if(!row)return {workspaceId:id,draft:null,available,model};
     let prepared,review=null;
     try{
       const src=checkedSource({version:row.source_version,binding:row.source_binding,messages:row.messages});
-      if(row.actor_id!==user || row.profile!==profile || row.model!==model || sha(row.request_json)!==row.request_hash)throw Error();
-      prepared=prepareDraft(src);
+      const historical=draftProtocol(row.profile);
+      if(row.actor_id!==user || !historical || row.model!==historical.model || sha(row.request_json)!==row.request_hash)throw Error();
+      prepared=historical.prepare(src);
       if(prepared.request!==row.request_json)throw Error();
       if(row.state && sha(row.raw_text)!==row.raw_hash)throw Error();
       if(row.state==='validated')review=prepared.validate(row.raw_text).review;
     }catch{fail('workspace_storage_unconfirmed',503);}
-    return {workspaceId:id,available,model,draft:{id:row.id,sourceVersion:row.source_version,sourceBinding:row.source_binding,
+    return {workspaceId:id,available,model,draft:{id:row.id,model:row.model,sourceVersion:row.source_version,sourceBinding:row.source_binding,
       stale:row.source_version!==w.current_source_version,state:row.state||'unconfirmed',code:row.code||null,
       createdAt:row.created_at.toISOString(),completedAt:row.completed_at?.toISOString()||null,review,usage:row.usage||null}};
   }
@@ -44,6 +47,7 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
         if(old)return result(client,user,id,old.draftId);
         if(!current.emailVerified)fail('ai_verified_account_required',403);
         if(!provider?.available())fail('ai_unavailable',503);
+        const protocol=providerProtocol(provider);if(!protocol)fail('ai_unavailable',503);
         const src=checkedSource((await client.query('SELECT version,binding,messages FROM scope_app.sources WHERE workspace_id=$1 AND version=$2',[id,w.current_source_version])).rows[0]);
         if(input.sourceVersion!==src.version || input.sourceBinding!==src.binding)fail('workspace_source_stale');
         if((await client.query('SELECT 1 FROM scope_app.ai_claims WHERE actor_id=$1 AND source_binding=$2',[user,src.binding])).rowCount)fail('ai_source_already_reviewed');
@@ -53,9 +57,9 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
           count(*) FILTER(WHERE created_at>=date_trunc('month',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS site_count
           FROM scope_app.ai_claims`,[id,user])).rows[0];
         if(Number(counts.workspace_count)>=8 || Number(counts.actor_count)>=3 || Number(counts.site_count)>=50)fail('ai_limit_reached',429);
-        let prepared;try{prepared=prepareDraft(src);}catch{fail('ai_source_too_large',422);}
+        let prepared;try{prepared=protocol.prepare(src);}catch{fail('ai_source_too_large',422);}
         const draftId=randomUUID();
-        await client.query('INSERT INTO scope_app.ai_claims(id,actor_id,request_id,workspace_id,source_version,source_binding,profile,model,request_json,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[draftId,user,input.requestId,id,src.version,src.binding,profile,model,prepared.request,prepared.requestHash]);
+        await client.query('INSERT INTO scope_app.ai_claims(id,actor_id,request_id,workspace_id,source_version,source_binding,profile,model,request_json,request_hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',[draftId,user,input.requestId,id,src.version,src.binding,protocol.profile,protocol.model,prepared.request,prepared.requestHash]);
         await record(client,user,input,id,'draft',fingerprint,{workspaceId:id,draftId});
         dispatch={draftId,prepared};
         return null;

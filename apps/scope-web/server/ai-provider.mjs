@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { model } from './ai-protocol.mjs';
+import { model,profile } from './ai-protocol.mjs';
 
 // No key is read during build or returned to the browser. Fail closed if a
 // project override would bypass the disclosed Netlify gateway route.
@@ -14,6 +14,7 @@ export function gatewayAvailable(env = process.env) {
 }
 export function createDraftProvider({ available = gatewayAvailable, client = () => new Anthropic({maxRetries:0,timeout:25000}) } = {}) {
   return Object.freeze({
+    profile,
     available,
     async generate(body) {
       if (!available()) throw Error('ai_unavailable');

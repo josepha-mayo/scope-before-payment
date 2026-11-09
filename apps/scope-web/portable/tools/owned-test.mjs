@@ -11,8 +11,8 @@ const docker=async(...args)=>(await execute('docker',args,{timeout:180000,maxBuf
 let container;
 try{
   await docker('info','--format','{{.ServerVersion}}');
-  try{await docker('image','inspect','postgres:17','--format','{{.Id}}');}catch{await docker('pull','postgres:17');}
-  container=await docker('create','--name',name,'--label',label+'='+nonce,'--publish','127.0.0.1::5432','--env','POSTGRES_DB=scope_test','--env','POSTGRES_USER=scope_fixture','--env','POSTGRES_PASSWORD=owned_local_auth_only','postgres:17');
+  try{await docker('image','inspect','postgres:18','--format','{{.Id}}');}catch{await docker('pull','postgres:18');}
+  container=await docker('create','--name',name,'--label',label+'='+nonce,'--publish','127.0.0.1::5432','--env','POSTGRES_DB=scope_test','--env','POSTGRES_USER=scope_fixture','--env','POSTGRES_PASSWORD=owned_local_auth_only','postgres:18');
   if(!/^[a-f0-9]{64}$/.test(container))throw Error('owned_container_unconfirmed');
   await docker('start',container);
   const deadline=Date.now()+90000;let details;
