@@ -24,7 +24,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   let suppressAuth=1;
   let ai=null,checkout=null,record=null,accountRecord=null,revisionHistory=null;
   let renderedPath=location.pathname;
-  let view, notice, session, recovery, editor, sourceEditor, quoteBox, conversationBox, invitationBox, publish, accept, discard, merchantCheck, buyerCheck, currentWorkspaceId;
+  let view, notice, session, recovery, editor, sourceEditor, quoteBox, conversationBox, invitationBox, publish, accept, discard, merchantCheck, buyerCheck, currentWorkspaceId, agreementOverview;
   let invitationCheck,invitationRevoke,invitationAck=false,paymentPreset,paymentPresetHelp;
   let changeBox, changeForm, changeNote, changeCheck, changeSubmit, responseCheck, changeAck=null, responseAck=null, withdrawCheck, withdrawSubmit, withdrawAck=null;
   const h = (tag, text, className) => { const e=doc.createElement(tag);if(text!==undefined)e.textContent=text;if(className)e.className=className;return e; };
@@ -76,7 +76,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   accountRecord=mountAccountRecord({parent:footer,h,button,context:()=>({user:state.user?.id,epoch:state.epoch,generation:state.generation,blocked:state.pending||!!state.intent,recovery:state.user?.readOnly===true}),load:async(path,actor)=>{const result=await api(path,undefined,actor);if(path==='me'&&result.id!==actor){retireSession();throw Error('account_changed');}return result;}});
   const check = (text, action) => { const label=h('label',undefined,'check'), input=doc.createElement('input');input.type='checkbox';input.onchange=action;label.append(input,h('span',text));return {label,input}; };
   const markEdit = () => { state.generation++;state.dirty=true;state.merchantAck=null;state.buyerAck=null;responseAck=null;actions(); };
-  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;revisionHistory?.dispose();revisionHistory=null;editor=null;paymentPreset=null;paymentPresetHelp=null;sourceEditor=null;quoteBox=null;conversationBox=null;invitationBox=null;invitationCheck=null;invitationRevoke=null;invitationAck=false;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
+  const clearView = () => { ai?.dispose();ai=null;checkout?.dispose();checkout=null;record?.dispose();record=null;revisionHistory?.dispose();revisionHistory=null;editor=null;paymentPreset=null;paymentPresetHelp=null;sourceEditor=null;quoteBox=null;agreementOverview=null;conversationBox=null;invitationBox=null;invitationCheck=null;invitationRevoke=null;invitationAck=false;publish=null;accept=null;discard=null;merchantCheck=null;buyerCheck=null;changeBox=null;changeForm=null;changeNote=null;changeCheck=null;changeSubmit=null;responseCheck=null;withdrawCheck=null;withdrawSubmit=null;withdrawAck=null;view.replaceChildren(); };
   const intentKey = user => 'scope-hosted-action-v1:'+user;
   function readIntent(user) { try { const raw=storage.getItem(intentKey(user));if(raw===null)return null;const x=JSON.parse(raw);if(raw.length>1024||Object.keys(x).sort().join(',')!=='actorId,path,requestId'||x.actorId!==user||!new RegExp('^'+uuid+'$').test(x.requestId)||!/^\/api\/v1\/(workspaces|workspaces\/[a-f0-9-]+\/(source|publish|accept|request-changes|withdraw-changes|draft|checkout(?:\/check|\/capture)?)|invitations\/[a-f0-9-]+\/(?:join|revoke))$/.test(x.path))throw Error();return x; }catch{return{invalid:true};} }
   function persist(intent) { const raw=JSON.stringify(intent);storage.setItem(intentKey(intent.actorId),raw);if(storage.getItem(intentKey(intent.actorId))!==raw)throw Error('storage'); }
@@ -165,8 +165,19 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
     form.onsubmit=async event=>{event.preventDefault();if(blocked()||state.createdWorkspaceId)return;save.disabled=true;const generation=state.generation;const result=await write('workspaces',{projectName:name.input.value,buyerEmail:email.input.value.trim(),messages:messages.read()});if(result){state.createdWorkspaceId=result.workspaceId;if(generation!==state.generation){say('Workspace created. Your later changes are still here.');form.append(button('Discard later edits and open saved workspace',()=>{clearDirty();history.replaceState(null,'','/workspace/'+result.workspaceId);openWorkspace(result.workspaceId);},true));}else{clearDirty();history.replaceState(null,'','/workspace/'+result.workspaceId);await openWorkspace(result.workspaceId);}}save.disabled=blocked()||!!state.createdWorkspaceId;};
     panel.append(form);view.append(panel);
   }
-  function drawSource(workspace){conversationBox.replaceChildren(h('h2','The complete conversation'));for(const message of workspace.source.messages){const card=h('article',undefined,'message');card.append(h('strong',message.role==='buyer'?'Buyer':'Creator'),h('p',message.text));conversationBox.append(card);}}
+  function drawSource(workspace){conversationBox.replaceChildren(h('h2','The complete conversation'));for(const message of workspace.source.messages){const card=h('article',undefined,'message');card.dataset.speaker=message.role;card.append(h('strong',message.role==='buyer'?'Buyer':'Creator'),h('p',message.text));conversationBox.append(card);}}
+  function drawAgreementOverview(workspace){
+    if(!agreementOverview)return;
+    const q=workspace.currentQuote;
+    const decision=workspace.openChangeRequest?'Changes requested':q&&!workspace.sourceCurrent?'New publication needed':workspace.accepted?(state.user?.readOnly?'Saved acceptance · under review':'Revision '+q.revision+' accepted'):'Awaiting buyer review';
+    agreementOverview.replaceChildren();
+    for(const [label,value] of [['Saved publication',q?'Revision '+q.revision+' · USD '+(q.totalCents/100).toFixed(2):'No published offer'],['Agreement',q?decision:'Creator review first'],['Payment','Separate confirmation below']]){
+      const item=h('div');item.append(h('span',label,'overview-label'),h('strong',value));agreementOverview.append(item);
+    }
+    agreementOverview.append(h('p','Publishing, accepting and paying are three separate decisions.','overview-note'));
+  }
   function drawQuote(workspace){
+    drawAgreementOverview(workspace);
     revisionHistory?.dispose();revisionHistory=null;
     const decision=doc.querySelector('#scope-buyer-decision .decision-target');if(decision)decision.textContent=decisionTarget(workspace.currentQuote);
     quoteBox.replaceChildren(h('h2',workspace.role==='buyer'?'Your exact offer':'Published offer'));
@@ -230,7 +241,7 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
       navigation.append(sectionJump('Conversation','scope-conversation'));
       if(workspace.role==='merchant')navigation.append(sectionJump('AI review','scope-ai-review'),sectionJump('Offer editor','scope-offer-editor'));
       navigation.append(sectionJump(workspace.role==='buyer'?'Your exact offer':'Published offer','scope-published-offer'));
-      if(workspace.role==='buyer')navigation.append(sectionJump('Your decision','scope-buyer-decision'));view.append(navigation);
+      if(workspace.role==='buyer')navigation.append(sectionJump('Your decision','scope-buyer-decision'));agreementOverview=h('aside',undefined,'agreement-overview');agreementOverview.setAttribute('aria-label','Saved agreement overview');view.append(agreementOverview,navigation);
       const grid=h('div',undefined,'workspace-grid');conversationBox=h('section',undefined,'conversation');conversationBox.id='scope-conversation';const right=h('div');grid.append(conversationBox,right);view.append(grid);drawSource(workspace);changeBox=h('section');right.append(changeBox);drawChanges(workspace);
       if(workspace.role==='merchant'){
         if(workspace.invitation){invitationBox=h('aside',undefined,'invite');right.append(invitationBox);drawInvitation(workspace);}
@@ -312,6 +323,8 @@ export function mount({ document: doc, auth, fetch: request = globalThis.fetch.b
   async function showAuth(){
     accountRecord?.actions();
     clearView();const hero=h('div',undefined,'auth-layout'),intro=h('div');intro.append(h('p','FOR CUSTOM COMMISSIONS','eyebrow'),h('h1','Agree on the work.\nThen ask for payment.'),h('p','One conversation. One precise offer. A separate decision on every revision.','intro'));
+    const steps=h('ol',undefined,'agreement-steps');
+    for(const [title,description] of [['Review the scope','AI suggests cited terms. You set the price.'],['Agree on a revision','See what changed before accepting.'],['Pay separately','Checkout follows the accepted agreement.']]){const item=h('li');item.append(h('strong',title),h('span',description));steps.append(item);}intro.append(steps);
     const card=h('section',undefined,'auth-card');card.append(h('h2','Your private workspace'));hero.append(intro,card);view.append(hero);
     let settings;try{settings=await auth.getSettings();}catch{card.append(h('p',offlinePreview?'Sign-in is available on a configured hosted preview. This local view does not create a test identity.':'Sign-in is unavailable. Netlify Identity must be enabled for this hosted preview.'));return;}
     const callback=state.callback;

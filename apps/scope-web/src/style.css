@@ -18,3 +18,41 @@ h1,.cards a{overflow-wrap:anywhere}
 .ai-review .ai-limits{margin-bottom:0;padding-bottom:0}
 @media(max-width:680px){.workspace-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:8px 0}.workspace-grid section[id]{scroll-margin-top:130px}.conversation{position:static;max-height:460px}}
 .revision-changes{border-left:3px solid var(--accent);padding:16px 18px;margin:24px 0;background:#eef2e7}.revision-changes>h3{margin-top:0}.revision-changes .changed-field{border-top:1px solid var(--line);margin-top:16px;padding-top:8px}.changed-field h4,.revision-history dt{font-size:.85rem;font-weight:700;margin:14px 0 6px}.revision-changes p,.revision-history p,.revision-history dd{font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}.revision-history dd{margin:4px 0 18px}.price-change,.decision-target{font-weight:650}.history-amount{font-weight:700;color:var(--accent)}
+
+/* A quiet contract desk: clear reading hierarchy and separate decisions. */
+:root{color:#172f2b;background:#f5f5ef;--accent:#145c4f;--line:#d8dfd9;--paper:#fffefa;--muted:#4f635c}
+body{background:radial-gradient(ellipse at 8% 0%,#e7eee4 0,transparent 48%),#f5f5ef}
+header{padding-top:25px;padding-bottom:25px;max-width:1400px}
+main,footer{max-width:1400px}
+.brand{font-size:1.8rem;letter-spacing:-.07em}
+.brand small{font-size:.59rem;letter-spacing:.2em}
+.badge{font-weight:650;background:#e7eee1;border-color:#cad8c7}
+h1{font-size:clamp(2.65rem,5.2vw,4.8rem);max-width:830px;letter-spacing:-.055em}
+h2{font-size:1.7rem;color:#173d33}
+.intro{font-size:1.13rem;line-height:1.65;max-width:560px}
+.auth-layout{grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr);gap:80px;padding:28px 0 42px}
+.auth-card{border-top:4px solid var(--accent);box-shadow:0 18px 55px #173d330b;padding:32px}
+section,.invite{border-radius:14px;box-shadow:0 2px 6px #173d3303}
+button{border-radius:8px;letter-spacing:.005em;transition:background-color .15s,border-color .15s}
+button:not(:disabled):hover{background:#0e493e;border-color:#0e493e}
+button.secondary:not(:disabled):hover{background:#e6eee3;color:#173d33;border-color:#9caf9f}
+a.button{display:inline-block;padding:12px 18px;margin:6px 8px 6px 0;border-radius:8px;background:var(--accent);color:white;font-size:.88rem;font-weight:650;text-decoration:none;min-height:44px}
+.agreement-steps{list-style:none;counter-reset:agreement-step;padding:0;display:grid;gap:19px;margin:36px 0 0;max-width:540px}
+.agreement-steps li{counter-increment:agreement-step;display:grid;grid-template-columns:36px 1fr;column-gap:14px;align-items:start}
+.agreement-steps li:before{content:counter(agreement-step,decimal-leading-zero) / "";grid-row:1/3;background:#e0eadc;color:#174d3c;border:1px solid #c6d5bf;border-radius:50%;width:34px;height:34px;display:grid;place-items:center;font-size:.7rem;font-weight:750}
+.agreement-steps strong{font-size:.92rem;line-height:1.4}.agreement-steps span{font-size:.83rem;color:var(--muted)}
+.workspace-title{padding:20px 0 12px}.workspace-title h1{font-size:clamp(2rem,3.5vw,3.25rem);margin:12px 0 18px;max-width:1000px}
+.agreement-overview{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:18px;border:1px solid #c8d6c7;border-radius:12px;background:#e9f0e4;padding:18px 22px;margin:8px 0 20px;min-width:0}
+.agreement-overview>div{min-width:0}.overview-label{display:block;font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;font-weight:750;color:#4d6557;margin-bottom:5px}.agreement-overview strong{display:block;font-size:.91rem;overflow-wrap:anywhere;line-height:1.4}.agreement-overview .overview-note{grid-column:1/-1;font-size:.75rem;color:#4d6557;margin:0;padding-top:12px;border-top:1px solid #cad8c7}
+.workspace-nav{background:#f5f5eff5;gap:6px;padding:10px 0 12px}.workspace-nav button{border-color:#cad5ca;font-size:.77rem;min-height:42px;border-radius:7px}
+.workspace-grid{grid-template-columns:minmax(270px,.78fr) minmax(0,1.22fr);gap:26px}
+.conversation{background:#edf1e9;border-color:#d1dccd;padding:24px}.conversation h2{font-size:1.45rem;margin-bottom:24px}
+.message{border:1px solid #d5dfd1;border-radius:10px;background:#fffefa;padding:16px;margin:14px 0}.message[data-speaker=merchant]{border-left:3px solid #39725a;background:#fafcf5}.message strong{font-size:.63rem;letter-spacing:.12em}.message p{line-height:1.75;font-size:.87rem;margin-bottom:0}
+.amount{font-size:2.7rem;letter-spacing:-.04em;margin:12px 0 26px;padding-bottom:22px}.offer-state,.ai-state{border-radius:0 7px 7px 0;line-height:1.65}
+#scope-published-offer>h3{font-size:.66rem;letter-spacing:.09em;margin-top:26px}#scope-published-offer>.exact{line-height:1.8;font-size:.95rem}
+.payment{background:#e8efe2;border-color:#c9d8c0}.payment-state{font-weight:700!important;font-size:1rem!important;color:#173d33!important}
+label>span{color:#263e35}input:not([type=checkbox]),textarea,select{border-color:#b9c7b7;border-radius:7px;background:#fffefa}input:not([type=checkbox]):focus,textarea:focus,select:focus{background:#fff}
+.cards article{border-radius:12px;box-shadow:0 4px 18px #173d3305}.cards article a{color:#173d33;font-size:1.45rem}.revision-changes{border-radius:0 9px 9px 0;background:#e9f0e4}.revision-changes .changed-field{padding-top:12px}
+@media(max-width:900px){.auth-layout{gap:32px}.auth-card{padding:24px}.workspace-grid{grid-template-columns:minmax(225px,.8fr) minmax(0,1.2fr);gap:18px}.conversation{padding:18px}.agreement-overview{gap:12px;padding:16px}.agreement-overview strong{font-size:.82rem}}
+@media(max-width:680px){header{padding-top:20px;padding-bottom:20px}.auth-layout{display:block;padding:6px 0 20px}.auth-card{margin-top:36px}.agreement-steps{gap:16px;margin-top:28px}.agreement-overview{grid-template-columns:1fr;gap:13px;padding:18px}.agreement-overview>div{display:flex;align-items:baseline;gap:16px;justify-content:space-between}.overview-label{flex:0 0 105px;margin:0}.agreement-overview strong{text-align:right}.agreement-overview .overview-note{line-height:1.6}.workspace-grid{display:block}.workspace-nav button{font-size:.76rem}.conversation{padding:20px}.workspace-title h1{font-size:2.2rem}.amount{font-size:2.4rem}}
+@media(prefers-reduced-motion:reduce){button{transition:none}}
