@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes,createHash} from 'node:crypto';
 import {prepareDraft,profile,model} from '../server/ai-protocol.mjs';
-import {draftProtocol,nvidiaProfile,nvidiaModel} from '../server/ai-profiles.mjs';
+import {draftProtocol,providerProtocol,nvidiaProfile,nvidiaModel} from '../server/ai-profiles.mjs';
 import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
+import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
 const messages=[{id:'M1',role:'merchant',text:'One digital heron PNG. Own website only; no resale. January 12, two rounds, USD87 before work.'}];
 const source={version:1,binding:createHash('sha256').update(JSON.stringify(messages)).digest('hex'),messages};
 const key=['nvapi',randomBytes(24).toString('hex')].join('-');
@@ -62,4 +63,25 @@ test('configuration and a mismatched body cannot load a credential or dispatch',
   await assert.rejects(createNvidiaDraftProvider({loadKey}).generate(body()),/ai_unavailable/);
   await assert.rejects(createNvidiaDraftProvider({loadKey,available:()=>true}).generate({...body(),model:'other'}),/ai_unavailable/);
   assert.equal(calls,0);
+});
+
+test('recovery wrapping preserves the selected request protocol and rejects unknown profiles',async()=>{
+  const policy=createRecoveryPolicy({read:()=>undefined});let calls=0;
+  const provider=guardDraftProvider(createNvidiaDraftProvider({loadKey:async()=>key,available:()=>true,fetcher:async(_url,options)=>{
+    calls++;assert.equal(JSON.parse(options.body).model,nvidiaModel);return Response.json(envelope());
+  }}),policy);
+  const selected=providerProtocol(provider);assert.equal(selected.profile,nvidiaProfile);
+  assert.equal((await provider.generate(selected.prepare(source).body)).state,'received');assert.equal(calls,1);
+  assert.equal(providerProtocol(guardDraftProvider({available:()=>true},policy)).profile,profile,'Legacy providers retain their original Claude protocol');
+  assert.equal(providerProtocol(guardDraftProvider({profile:'future-unknown-profile',available:()=>true},policy)),null,'An unsupported profile cannot silently become Claude');
+});
+
+test('a recovery hold during key preparation consumes no NVIDIA network request',async()=>{
+  let held=false,release,calls=0;const policy=createRecoveryPolicy({read:()=>held?'true':'false'});
+  const waiting=new Promise(resolve=>release=resolve);
+  const provider=guardDraftProvider(createNvidiaDraftProvider({loadKey:()=>waiting,available:policy.writable,fetcher:async()=>{calls++;return Response.json(envelope());}}),policy);
+  const pending=provider.generate(body());held=true;release(key);
+  assert.deepEqual(await pending,{state:'unconfirmed',raw:'',code:'ai_provider_unconfirmed'});
+  assert.equal(calls,0);assert.equal(provider.available(),false);assert.equal(provider.profile,nvidiaProfile);
+  await assert.rejects(provider.generate(body()),/recovery_read_only/);assert.equal(calls,0);
 });

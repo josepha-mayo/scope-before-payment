@@ -17,7 +17,7 @@ export function createNvidiaDraftProvider({loadKey,available=()=>false,fetcher=f
       const controller=new AbortController();let timeout;
       const deadline=new Promise((_,reject)=>{timeout=setTimeout(()=>{controller.abort();reject(Error('ai_deadline'));},25000);});
       const work=async()=>{
-        const key=await loadKey();if(controller.signal.aborted||!validKey(key))return unknown();
+        const key=await loadKey();if(controller.signal.aborted||!available()||!validKey(key))return unknown();
         const response=await fetcher(endpoint,{method:'POST',redirect:'error',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json',Accept:'application/json'},body:request,signal:controller.signal});
         // No polling 202, authentication retry, redirect, failover or repair.
         if(response.status!==200)return unknown();
