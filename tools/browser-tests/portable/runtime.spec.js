@@ -19,7 +19,7 @@ test('portable entry has one real SDK sign-in and truthful inactive-provider dis
   expect(response.headers()['strict-transport-security']).toBe('max-age=31536000');
   await page.goto('/');await expect(page.getByRole('heading',{name:'Your private workspace'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Continue with GitHub'})).toBeVisible();await expect(page.getByLabel('Password',{exact:true})).toHaveCount(0);
-  await page.getByText('How Scope stores your data',{exact:true}).click();await expect(page.getByText('New AI review is not connected on this host.',{exact:false})).toBeVisible();
+  await page.getByText('How Scope stores your data',{exact:true}).click();await expect(page.getByText('AI reviews are optional and only run after explicit confirmation.',{exact:false})).toBeVisible();
   await page.screenshot({path:'portable-login-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});await expect(page.getByRole('button',{name:'Continue with GitHub'})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'portable-login-mobile.png',fullPage:true});

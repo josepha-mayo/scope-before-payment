@@ -1,9 +1,9 @@
 # Portable authentication qualification
 
-This is a browser and read-only server for the hosting migration, not a deployed
-replacement for the existing Netlify site. Production still uses Netlify Identity. No Render
-service, GitHub OAuth application, provider credential or production database is
-created by these modules or tests.
+This is the portable browser and Node server for the hosting migration. It starts
+read-only by default; controlled commission writes, enrollment and NVIDIA review
+are separate explicit capabilities. These modules never provision a host, create
+credentials, apply production migrations or reset existing application journals.
 
 Better Auth **1.7.18** handles GitHub authorization, database-backed state, PKCE,
 signed secure cookies, OAuth token encryption, sessions and database rate limits.
@@ -62,22 +62,44 @@ listening. Startup never creates a schema, identity mapping or empty journal.
 `/healthz` checks the database without returning private configuration. Host
 validation remains pinned to the configured HTTPS origin.
 
-This release is compiled read-only. Its database login must also lack write
-permissions on every application table and on identity mappings. Startup rejects
-an application writer, superuser, role/database creator or RLS-bypass role.
-The operator-only `sql/reader-role.sql` defines a NOLOGIN permission group:
-application/mapping reads, plus the specific authentication tables needed for
-real sign-in, session revocation and rate limits. Create a separate private login
-in that group through the reviewed provisioning workflow. Never use the database
-owner as the web app's login. Future application-write activation is a separate
-source, database-permission and native migration gate.
+The default database login must lack application and identity-mapping writes.
+Startup checks column grants, table grants, schema/database creation, privileged
+role attributes and every role the login can SET ROLE to. The operator-only
+`sql/reader-role.sql` grants application/mapping reads and the specific auth-table
+writes needed by the SDK. Never use the database owner as the web login.
+
+After a reviewed final source cutover, `sql/commission-writer-role.sql` adds only
+the columns used by commission creation, publication, invitation and revision
+history. Only the current source version, revision and buyer assignment can be
+updated. `sql/ai-writer-role.sql` separately adds append-only AI claim/receipt
+columns; `sql/enrollment-role.sql` separately permits new immutable actor links.
+None grants application deletion, truncation, timestamp rewriting, DDL, payment
+writes, OAuth sequence use, or identity-link updates. These are operator-applied
+permission groups, not credentials, and startup never applies their SQL.
+
+| Setting | Default | Explicit activation |
+| --- | --- | --- |
+| `SCOPE_PORTABLE_MODE` | `read-only` | `write` requires commission column grants |
+| `SCOPE_PORTABLE_AI_PROVIDER` | `off` | `nvidia` requires write mode, AI grants and the existing private `SCOPE_NVIDIA_API_KEY` |
+| `SCOPE_PORTABLE_ENROLLMENT` | `existing-only` | `enabled` requires write mode and actor-link insertion grants |
+| `SCOPE_PORTABLE_CUTOVER_RECEIPT` | absent | Write mode requires the SHA256 of the reviewed final cutover evidence |
+| `SCOPE_RECOVERY_READ_ONLY` | absent | `true`, conflicting or malformed values hold application writes and provider dispatch |
+
+The receipt setting is an operator reference, not automatic proof of an external
+fence. First fence all old production/immutable ingress, drain old invocations,
+compare the final source snapshot and preserve every old claim, quota and unknown
+outcome. Keep the actual new authentication rows. Save that evidence privately,
+then provision the exact role memberships/settings and deploy the qualified
+commit. Capability settings require restart; they are not an instant kill switch
+for an older deployment. Recovery must also fence and drain before restoration.
 
 The portable browser uses the SDK for sign-in/sign-out, restores only valid saved
 workspace paths, checks its redirect destination, and displays failed sign-in
 without reopening a private view. Cross-tab notices only invalidate the view;
 the server remains authoritative. The SDK's generic session/token endpoints
-remain unavailable. The UI discloses that this migration host accepts existing
-mapped accounts, pauses changes, and has no connected new AI review.
+remain unavailable. The UI reports paused changes and existing-account restrictions from server
+state. New AI consent names and binds the actual provider; saved reviews retain
+their historical provider. A provider change requires fresh review and consent.
 
 OAuth HTTP work has one total 12-second deadline. The production launch command
 installs cancellation on SDK fetches within that request scope; it does not
@@ -104,8 +126,10 @@ with the appropriate CA chain and restricted ingress for this qualification.
 See [Render's connection guidance](https://render.com/docs/postgresql-creating-connecting).
 
 `PORT` defaults to 10000. Runtime logs contain bounded stage codes, not database
-URLs, credentials, provider bodies or account identifiers. AI and PayPal are not
-constructed by this launch command. The webhook path returns unavailable until
+URLs, credentials, provider bodies or account identifiers. AI is constructed only with its explicit setting, uses the existing bounded
+NVIDIA transport and immutable shared-quota claim store, and does not load a key
+or call the provider during startup. PayPal is still not constructed. The webhook
+path returns unavailable until
 its independent receiver and registered-delivery gates are qualified.
 
 `migrations/001_better_auth.sql` is compiled with the installed official SDK from

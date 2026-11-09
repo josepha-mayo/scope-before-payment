@@ -21,7 +21,7 @@ async function boundedJson(request,timeoutMs){
 
 // Public SDK surface is deliberately limited. In particular get-session,
 // account/token APIs, user mutation and account linking are not HTTP routes.
-export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false}){
+export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false,canWrite=canEnroll}){
   if(new URL(origin).origin!==origin||!origin.startsWith('https://')||!Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000)throw Error('auth_boundary_configuration');
   return async function handle(request,transport){
     const url=new URL(request.url);
@@ -29,7 +29,8 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=
     if(url.pathname==='/api/auth/settings'){
       if(request.method!=='GET'||url.search)return failure(400,'auth_settings_rejected');
       let enrollment=false;try{enrollment=canEnroll()===true;}catch{}
-      return Response.json({providers:{github:true,email:false},existingAccountsOnly:!enrollment},{headers:security});
+      let writable=false;try{writable=canWrite()===true;}catch{}
+      return Response.json({providers:{github:true,email:false},existingAccountsOnly:!enrollment,readOnly:!writable},{headers:security});
     }
     const signIn=url.pathname==='/api/auth/sign-in/social',signOut=url.pathname==='/api/auth/sign-out',callback=url.pathname==='/api/auth/callback/github';
     if(!signIn&&!signOut&&!callback)return failure(404,'auth_route_not_found');
