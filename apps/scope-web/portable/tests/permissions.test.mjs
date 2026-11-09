@@ -31,7 +31,7 @@ test('the actual commission role runs creation and publication while timestamps,
     const made=await store.create({requestId:randomUUID(),buyerEmail:'owned-buyer@invented.example',projectName:'Owned role qualification',messages:[{id:'M1',role:'merchant',text:'One heron PNG for USD87 before work. No resale.'}]});
     assert.ok(made.workspaceId);
     const published=await store.publish(made.workspaceId,{requestId:randomUUID(),expectedRevision:0,sourceVersion:1,sourceBinding:made.source.binding,confirmation:'publish-exact-reviewed-offer',fields:{deliverable:'One heron PNG.',usage:'Own website only. No resale.',delivery:'January 12, 2027',revisions:'One round.',price:'87.00',terms:'Single full payment of USD87.00 before work starts.'}});
-    assert.equal(published.quote.revision,1);assert.equal((await store.read(made.workspaceId)).quote.totalCents,8700);
+    assert.equal(published.quote.revision,1);assert.equal((await store.read(made.workspaceId)).currentQuote.totalCents,8700);
     for(const sql of ["UPDATE scope_app.workspaces SET merchant_id=merchant_id","INSERT INTO scope_app.workspaces(created_at) VALUES(now())","INSERT INTO scope_app.ai_claims(id) VALUES(gen_random_uuid())","INSERT INTO scope_app.checkout_calls(id) VALUES(gen_random_uuid())","DELETE FROM scope_app.workspaces","TRUNCATE scope_app.sources","CREATE TABLE scope_app.unowned(id int)","INSERT INTO scope_identity.actor_links(provider) VALUES('github')","SELECT nextval('scope_app.paypal_oauth_claims_sequence_seq')"])await rejects(c,sql);
   });
 });
