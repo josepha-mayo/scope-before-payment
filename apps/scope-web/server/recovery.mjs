@@ -9,7 +9,8 @@ export function createRecoveryPolicy({read=runtimeEnv,releaseReadOnly=recoveryRe
   return Object.freeze({writable});
 }
 export function guardDraftProvider(provider,policy){
-  return Object.freeze({available:()=>policy.writable()&&provider.available(),generate:async body=>{
+  const profile=provider.profile;
+  return Object.freeze({...(profile===undefined?{}:{profile}),available:()=>policy.writable()&&provider.available(),generate:async body=>{
     if(!policy.writable())throw Error('recovery_read_only');return provider.generate(body);
   }});
 }
