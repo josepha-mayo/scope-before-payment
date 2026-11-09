@@ -362,19 +362,33 @@ test('changing AI hosts preserves both historical protocols, source claims, cons
   const firstInput=aiInput(f),first=await claude.requestDraft(f.id,firstInput);assert.equal(first.draft.state,'validated');
   assert.deepEqual((await nvidia.requestDraft(f.id,firstInput)).draft,first.draft);
   assert.deepEqual((await nvidia.readDraft(f.id)).draft,first.draft);assert.equal(nvidiaCalls,0);
-  const clone=await f.merchant.create({...f.input,requestId:randomUUID()});await assert.rejects(nvidia.requestDraft(clone.workspaceId,aiInput(f)),code('ai_source_already_reviewed'));
+  const clone=await f.merchant.create({...f.input,requestId:randomUUID()});await assert.rejects(nvidia.requestDraft(clone.workspaceId,{...aiInput(f),providerProfile:nvidiaProfile}),code('ai_source_already_reviewed'));
   let source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'Invented second source.'}]});
-  const secondInput={...aiInput(f),sourceVersion:2,sourceBinding:source.source.binding},second=await nvidia.requestDraft(f.id,secondInput);
+  const secondInput={...aiInput(f),providerProfile:nvidiaProfile,sourceVersion:2,sourceBinding:source.source.binding},second=await nvidia.requestDraft(f.id,secondInput);
   assert.equal(second.draft.state,'unconfirmed');assert.equal(second.draft.model,nvidiaModel);
   assert.deepEqual((await claude.requestDraft(f.id,secondInput)).draft,second.draft);assert.equal(claudeCalls,1);assert.equal(nvidiaCalls,1);
   source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:2,messages:[...messages,{id:'B2',role:'buyer',text:'Invented third source.'}]});
   await claude.requestDraft(f.id,{...aiInput(f),sourceVersion:3,sourceBinding:source.source.binding});
   source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:3,messages:[...messages,{id:'B2',role:'buyer',text:'Invented fourth source.'}]});
-  await assert.rejects(nvidia.requestDraft(f.id,{...aiInput(f),sourceVersion:4,sourceBinding:source.source.binding}),code('ai_limit_reached'));
+  await assert.rejects(nvidia.requestDraft(f.id,{...aiInput(f),providerProfile:nvidiaProfile,sourceVersion:4,sourceBinding:source.source.binding}),code('ai_limit_reached'));
   assert.equal(claudeCalls+nvidiaCalls,3);
   const claims=(await pool.query('SELECT profile,model,request_json,request_hash FROM scope_app.ai_claims WHERE actor_id=$1 ORDER BY source_version',[f.merchantId])).rows;
   assert.deepEqual(claims.map(x=>x.profile),[claudeProfile,nvidiaProfile,claudeProfile]);
   assert.equal(claims[1].request_json,draftProtocol(nvidiaProfile).prepare({version:2,binding:secondInput.sourceBinding,messages:[...messages,{id:'B2',role:'buyer',text:'Invented second source.'}]}).request);
+});
+
+test('an AI provider change rejects old disclosure before claiming, while the confirmed profile remains replayable',async()=>{
+  const f=await fixture();let selected=claudeProfile,calls=0;
+  const store=aiFixture(f,{get profile(){return selected;},available:()=>true,generate:async body=>{calls++;assert.equal(body.model,nvidiaModel);return {state:'unconfirmed',raw:''};}});
+  const observed=await store.readDraft(f.id);assert.equal(observed.profile,claudeProfile);assert.equal(observed.model,claudeModel);
+  selected=nvidiaProfile;
+  for(const extra of [{},{providerProfile:claudeProfile},{providerProfile:'future-profile'}])await assert.rejects(store.requestDraft(f.id,{...aiInput(f),...extra}),code('ai_provider_changed'));
+  assert.equal(calls,0);assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.ai_claims WHERE actor_id=$1',[f.merchantId])).rows[0].n,0);
+  const input={...aiInput(f),providerProfile:nvidiaProfile},saved=await store.requestDraft(f.id,input);
+  assert.equal(saved.draft.profile,nvidiaProfile);assert.equal(saved.draft.state,'unconfirmed');assert.equal(calls,1);
+  selected=claudeProfile;
+  assert.deepEqual((await store.requestDraft(f.id,input)).draft,saved.draft);assert.equal(calls,1,'Replaying the admitted request reads its original profile without dispatch');
+  assert.equal((await store.readDraft(f.id)).profile,claudeProfile);assert.equal((await store.readDraft(f.id)).draft.profile,nvidiaProfile);
 });
 
 test('an unknown configured AI profile cannot mint a claim while old reviews remain readable',async()=>{

@@ -249,6 +249,25 @@ test('a failed read or changed account cannot download a cached private record',
  }finally{await f.close();}
 });
 
+test('changing the AI recipient requires its new disclosure before any committed provider call',async({browser})=>{
+ const f=await fixture(browser,{draftGenerate:async()=>({state:'unconfirmed',raw:''})});try{
+  const page=await f.page('creator');await create(page,'Provider consent qualification');
+  const claude='Send excerpts from this saved conversation to Anthropic through Netlify for AI review. Scope privately retains this request and its result.';
+  const nvidia='Send excerpts from this saved conversation to NVIDIA for AI review. Scope privately retains this request and its result.';
+  await page.getByLabel(claude,{exact:true}).check();
+  f.app.setDraftProfile('nvidia-nemotron-3-5-lightning-partial-v1');
+  await page.getByRole('button',{name:'Review saved conversation with AI',exact:true}).click();
+  await expect(page.getByLabel(nvidia,{exact:true})).toBeVisible();await expect(page.getByLabel(nvidia,{exact:true})).not.toBeChecked();
+  await expect(page.getByLabel(claude,{exact:true})).toHaveCount(0);await expect(page.getByRole('button',{name:'Review saved conversation with AI',exact:true})).toBeDisabled();expect(f.app.counts.ai).toBe(0);
+  await expect(page.getByLabel(nvidia,{exact:true})).toBeDisabled();await expect(page.getByRole('status',{name:'Workspace status',exact:true})).toContainText('Refresh the saved offer');
+  await page.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(page.getByLabel(nvidia,{exact:true})).toBeEnabled();await expect(page.getByLabel(nvidia,{exact:true})).not.toBeChecked();expect(f.app.counts.ai).toBe(0);
+  await page.getByLabel(nvidia,{exact:true}).check();await page.getByRole('button',{name:'Review saved conversation with AI',exact:true}).click();
+  await expect(page.locator('.ai-state')).toHaveText('AI attempt saved · outcome unconfirmed');await expect(page.getByText('Saved review: NVIDIA Nemotron 3.5 Lightning',{exact:true})).toBeVisible();expect(f.app.counts.ai).toBe(1);
+  f.app.setDraftProfile(undefined);await page.getByRole('button',{name:'Check saved AI result',exact:true}).click();
+  await expect(page.getByText('Saved review: NVIDIA Nemotron 3.5 Lightning',{exact:true})).toBeVisible();expect(f.app.counts.ai).toBe(1);expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('authored AI suggestions survive lost HTTP response, require individual review, preserve manual price and retire on source changes',async({browser})=>{
  const f=await fixture(browser);try{
   const page=await f.page('creator'),id=await create(page,'Authored AI review qualification');
