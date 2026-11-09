@@ -4,7 +4,8 @@ const claude=Object.freeze({profile:'anthropic-haiku-5-5-partial-v1',model:'clau
 const nvidia=Object.freeze({profile:'nvidia-nemotron-3-5-lightning-partial-v1',model:'nvidia/nemotron-3.5-lightning-30b-a3b',name:'NVIDIA Nemotron 3.5 Lightning',
   consent:'Send excerpts from this saved conversation to NVIDIA for AI review. Scope privately retains this request and its result.',
   dataUseText:'NVIDIA Nemotron 3.5 Lightning. Saved conversation excerpts are sent to NVIDIA only when you explicitly request AI review. Scope privately retains the request and result.'});
+const nvidiaCommission=Object.freeze({...nvidia,profile:'nvidia-nemotron-3-5-lightning-commission-v2'});
 export function aiProviderDisclosure(profile,model){
-  const known=profile===claude.profile?claude:profile===nvidia.profile?nvidia:null;
+  const known=profile===claude.profile?claude:profile===nvidia.profile?nvidia:profile===nvidiaCommission.profile?nvidiaCommission:null;
   return known?.model===model?known:null;
 }

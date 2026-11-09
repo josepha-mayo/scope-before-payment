@@ -7,7 +7,7 @@ const token=value=>Number.isSafeInteger(value)&&value>=0&&value<=1000000?value:n
 const unknown=()=>({state:'unconfirmed',raw:'',code:'ai_provider_unconfirmed'});
 
 // Server-only transport. Construction/build does not load a key or make a call.
-// Portable runtime activation remains compiled off until its native gates pass.
+// The portable runtime constructs it only through explicit verified activation.
 export function createNvidiaDraftProvider({loadKey,available=()=>false,fetcher=fetch}={}){
   if(typeof loadKey!=='function')throw Error('ai_configuration_invalid');
   return Object.freeze({profile:nvidiaProfile,available,
