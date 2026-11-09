@@ -35,7 +35,24 @@ test('timed-out ignored fake fetch is retired durably, late result cannot clear 
 test('closed/retired admission cannot authorize new credential reads, fake calls or restored capture from old GET',async t=>{const x=await fixture(t),p=await approved(x);await x.admission.close();await assert.rejects(x.journal.capture(p.attemptId,x.buyer,input(p,'capture')));assert.equal(x.calls.length,3);});
 
 test('repeated OAuth access_token value is legitimate only in its designated field; secret/basic echoes and token reuse as diagnostics reject',async t=>{const x=await fixture(t),p=await create(x);x.setClock(300000);await x.journal.reconcile(p.attemptId,x.buyer);assert.equal(x.calls.filter(c=>c.url.endsWith('/token')).length,2);for(const patch of [{access_token:creds().clientSecret},{access_token:Buffer.from(creds().clientId+':'+creds().clientSecret).toString('base64')},{access_token:'AUTHORED_TOKEN_0123456789',debug:creds().clientSecret}]){const y=await fixture(t);y.setHook((u,o,r)=>u.endsWith('/token')?json({access_token:'OTHER_AUTHORED_TOKEN',token_type:'Bearer',expires_in:3600,...patch}):r);const a=await y.prepare();await assert.rejects(y.journal.create(a.attemptId,y.buyer,input(a,'create')));assert.equal(y.calls.length,1);assert.doesNotMatch(JSON.stringify(await y.budget()),/AUTHORED_SECRET|Authorization|debug/);}});
-test('durable pending CREATE budget survives close/reopen and refuses direct adapter replacement before loading credentials',async t=>{const x=await fixture(t,{timeoutMs:50}),p=await x.prepare();x.setHook((u,o,r)=>u.endsWith('/orders')?new Promise(()=>{}):r);await assert.rejects(x.journal.create(p.attemptId,x.buyer,input(p,'create')));await x.journal.close();await x.adapter.close();await x.admission.close();const a=await openOfferSandboxAdmission(x.options),tr=createOfferSandboxTransport({...x.adapterOptions,admission:a});t.after(async()=>{await tr.close();await a.close()});const raw=JSON.parse(await fs.readFile(path.join(x.root,'journal','intent-'+p.recordId+'.json'))).attempt;assert.throws(()=>tr.post(raw,C.descriptorForAttempt(raw,'create'),undefined,()=>true),/unconfirmed/);assert.equal(x.loads(),1);assert.equal(x.calls.length,2);});
+test('durable pending CREATE budget survives close/reopen and refuses direct adapter replacement before loading credentials',async t=>{
+ const x=await fixture(t,{timeoutMs:50}),p=await x.prepare();let entered;
+ const started=new Promise(resolve=>entered=resolve);
+ x.setHook((u,o,r)=>u.endsWith('/orders')?new Promise(()=>entered()):r);
+ // Timeout the intended fake CREATE after its durable admission, rather than
+ // depending on disk fsync and runner scheduling fitting inside50 real ms.
+ t.mock.timers.enable({apis:['setTimeout']});
+ const creating=x.journal.create(p.attemptId,x.buyer,input(p,'create')),rejected=assert.rejects(creating);
+ await Promise.race([started,creating.then(()=>{throw Error('unexpected fake CREATE success');},()=>{throw Error('retired before fake CREATE started');})]);
+ t.mock.timers.tick(51);await rejected;
+ const pending=(await x.budget()).requests.at(-1);assert.equal(pending.kind,'create');assert.equal(pending.phase,'unknown');
+ await x.journal.close();await x.adapter.close();await x.admission.close();
+ const a=await openOfferSandboxAdmission(x.options),tr=createOfferSandboxTransport({...x.adapterOptions,admission:a});
+ t.after(async()=>{await tr.close();await a.close()});
+ const raw=JSON.parse(await fs.readFile(path.join(x.root,'journal','intent-'+p.recordId+'.json'))).attempt;
+ assert.throws(()=>tr.post(raw,C.descriptorForAttempt(raw,'create'),undefined,()=>true),/unconfirmed/);
+ assert.equal(x.loads(),1);assert.equal(x.calls.length,2);
+});
 test('new admission cannot inherit prior successful approval authority; explicit GET is required after reopening',async t=>{const x=await fixture(t),p=await approved(x);await x.journal.close();await x.adapter.close();await x.admission.close();const a=await openOfferSandboxAdmission(x.options),tr=createOfferSandboxTransport({...x.adapterOptions,admission:a}),j=await openOfferPaymentJournal({enabled:true,directory:path.join(x.root,'journal'),record:x.record,context:x.context,transportMode:'admitted_sandbox',transport:tr});t.after(async()=>{await j.close();await tr.close();await a.close()});await assert.rejects(j.capture(p.attemptId,x.buyer,input(p,'capture')));const before=x.calls.length;assert.equal(before,3);await j.reconcile(p.attemptId,x.buyer);await j.capture(p.attemptId,x.buyer,input(p,'capture'));assert.equal(x.calls.length,before+3);});
 
 test('foreign known-order URL is rejected before credential/OAuth IO even with a well-formed typed read descriptor',async t=>{const x=await fixture(t),p=await create(x);x.setClock(300000);const raw=JSON.parse(await fs.readFile(path.join(x.root,'journal','intent-'+p.recordId+'.json'))).attempt;assert.throws(()=>x.adapter.read(raw,{contractKind:C.scope,attemptBinding:raw.binding,method:'GET',url:API+'/v2/checkout/orders/OTHER42'},undefined,()=>true),/unconfirmed/);assert.equal(x.loads(),1);assert.equal(x.calls.length,2);});

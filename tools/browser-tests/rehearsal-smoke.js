@@ -6,7 +6,8 @@ const receipt={kind:'scope_local_rehearsal_smoke_v1',sourceCommit:process.env.GI
 let child,browser,ready,phase='launch',exit;
 async function main(){
  child=spawn(process.execPath,[path.resolve(__dirname,'../../apps/scope-web/tools/rehearsal.mjs')],{stdio:['ignore','pipe','pipe']});
- exit=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));let text='';
+ exit=new Promise(resolve=>child.once('exit',(code,signal)=>resolve({code,signal})));let text='',diagnostics='';
+ child.stderr.on('data',data=>{diagnostics=(diagnostics+data.toString()).slice(-4096);const line=diagnostics.split('\n').find(x=>x.startsWith('SCOPE_REHEARSAL_FAILED '));if(line){try{const value=JSON.parse(line.slice('SCOPE_REHEARSAL_FAILED '.length));if(/^rehearsal_[a-z_]+$/.test(value.code)&& (value.detail===null||/^(?:[0-9A-Z]{5}|E[A-Z_]{1,40}|ERR_[A-Z_]{1,60})$/.test(value.detail)))receipt.launcherFailure={code:value.code,detail:value.detail};}catch{}}});
  ready=await Promise.race([new Promise((resolve,reject)=>{child.once('error',reject);child.stdout.on('data',data=>{text+=data.toString();const line=text.split('\n').find(x=>x.startsWith('SCOPE_REHEARSAL_READY '));if(line)resolve(JSON.parse(line.slice('SCOPE_REHEARSAL_READY '.length)));});}),exit.then(()=>{throw Error('launcher_exited_before_ready');}),new Promise((_,reject)=>setTimeout(()=>reject(Error('launcher_ready_deadline')),150000).unref())]);
  assert.match(ready.origin,/^http:\/\/127\.0\.0\.1:\d+$/);assert.match(ready.containerName,/^scope-rehearsal-[a-f0-9-]{36}$/);assert.ok(ready.migrations>=11);receipt.migrations=ready.migrations;
  phase='browser_journey';browser=await chromium.launch();const context=await browser.newContext();
