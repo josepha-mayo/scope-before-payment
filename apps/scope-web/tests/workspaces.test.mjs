@@ -11,6 +11,8 @@ import {createWebhookHandler} from '../server/paypal-webhook.mjs';
 import {createWebhookStore} from '../server/webhook-store.mjs';
 import {signedWebhookFixture} from './fixtures/webhook.mjs';
 import {createPaypalTokens} from '../server/paypal-tokens.mjs';
+import {profile as claudeProfile,model as claudeModel} from '../server/ai-protocol.mjs';
+import {draftProtocol,nvidiaProfile,nvidiaModel} from '../server/ai-profiles.mjs';
 import {descriptor} from '../server/checkout-contract.mjs';
 
 // An explicitly named, empty, loopback CI database only. Never infer a hosted
@@ -353,6 +355,38 @@ test('a capture with no stored receipt can reconcile after its in-flight window 
 function aiFixture(f,provider,customPool=pool,verified=true){return createWorkspaceStore({pool:customPool,getPrincipal:async()=>({id:f.merchantId,email:'creator@invented.example',emailVerified:verified,confirmedAt:'2026-11-07T00:00:00Z'}),draftProvider:provider});}
 const aiInput=f=>({requestId:randomUUID(),sourceVersion:1,sourceBinding:f.created.source.binding,confirmation:'send-saved-conversation-for-ai-review'});
 const aiRaw=()=>JSON.stringify({fields:{deliverable:{text:'One digital PNG.',refs:['r1']},usage:{text:'Own website only.',refs:['r1']},delivery:null,revisions:null,terms:null},exclusions:{state:'proposed',text:'No resale.',refs:['r1']},questions:['delivery','revisions','terms'].map(field=>({field,question:'Please confirm '+field+'.',refs:['r1']}))});
+test('changing AI hosts preserves both historical protocols, source claims, consumed failures and shared account quota',async()=>{
+  const f=await fixture();let claudeCalls=0,nvidiaCalls=0;
+  const claude=aiFixture(f,{profile:claudeProfile,available:()=>true,generate:async body=>{claudeCalls++;assert.equal(body.model,claudeModel);return {state:'received',raw:aiRaw()};}});
+  const nvidia=aiFixture(f,{profile:nvidiaProfile,available:()=>true,generate:async body=>{nvidiaCalls++;assert.equal(body.model,nvidiaModel);return {state:'unconfirmed',raw:''};}});
+  const firstInput=aiInput(f),first=await claude.requestDraft(f.id,firstInput);assert.equal(first.draft.state,'validated');
+  assert.deepEqual((await nvidia.requestDraft(f.id,firstInput)).draft,first.draft);
+  assert.deepEqual((await nvidia.readDraft(f.id)).draft,first.draft);assert.equal(nvidiaCalls,0);
+  const clone=await f.merchant.create({...f.input,requestId:randomUUID()});await assert.rejects(nvidia.requestDraft(clone.workspaceId,aiInput(f)),code('ai_source_already_reviewed'));
+  let source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'Invented second source.'}]});
+  const secondInput={...aiInput(f),sourceVersion:2,sourceBinding:source.source.binding},second=await nvidia.requestDraft(f.id,secondInput);
+  assert.equal(second.draft.state,'unconfirmed');assert.equal(second.draft.model,nvidiaModel);
+  assert.deepEqual((await claude.requestDraft(f.id,secondInput)).draft,second.draft);assert.equal(claudeCalls,1);assert.equal(nvidiaCalls,1);
+  source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:2,messages:[...messages,{id:'B2',role:'buyer',text:'Invented third source.'}]});
+  await claude.requestDraft(f.id,{...aiInput(f),sourceVersion:3,sourceBinding:source.source.binding});
+  source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:3,messages:[...messages,{id:'B2',role:'buyer',text:'Invented fourth source.'}]});
+  await assert.rejects(nvidia.requestDraft(f.id,{...aiInput(f),sourceVersion:4,sourceBinding:source.source.binding}),code('ai_limit_reached'));
+  assert.equal(claudeCalls+nvidiaCalls,3);
+  const claims=(await pool.query('SELECT profile,model,request_json,request_hash FROM scope_app.ai_claims WHERE actor_id=$1 ORDER BY source_version',[f.merchantId])).rows;
+  assert.deepEqual(claims.map(x=>x.profile),[claudeProfile,nvidiaProfile,claudeProfile]);
+  assert.equal(claims[1].request_json,draftProtocol(nvidiaProfile).prepare({version:2,binding:secondInput.sourceBinding,messages:[...messages,{id:'B2',role:'buyer',text:'Invented second source.'}]}).request);
+});
+
+test('an unknown configured AI profile cannot mint a claim while old reviews remain readable',async()=>{
+  const f=await fixture();let calls=0;
+  const old=aiFixture(f,{available:()=>true,generate:async()=>({state:'received',raw:aiRaw()})});
+  const saved=await old.requestDraft(f.id,aiInput(f));
+  const changed=aiFixture(f,{profile:'unsupported-authored-profile',available:()=>true,generate:async()=>{calls++;}});
+  assert.deepEqual((await changed.readDraft(f.id)).draft,saved.draft);assert.equal((await changed.readDraft(f.id)).available,false);
+  const source=await f.merchant.replaceSource(f.id,{requestId:randomUUID(),expectedVersion:1,messages:[...messages,{id:'B2',role:'buyer',text:'Invented unconfigured source.'}]});
+  await assert.rejects(changed.requestDraft(f.id,{...aiInput(f),sourceVersion:2,sourceBinding:source.source.binding}),code('ai_unavailable'));assert.equal(calls,0);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.ai_claims WHERE actor_id=$1',[f.merchantId])).rows[0].n,1);
+});
 test('AI concurrent requests and recovery use one committed claim; source changes retire copying without rewriting the receipt',async()=>{
   const f=await fixture();let calls=0,release,entered;const started=new Promise(r=>entered=r),wait=new Promise(r=>release=r);
   const store=aiFixture(f,{available:()=>true,generate:async()=>{calls++;entered();await wait;return {state:'received',raw:aiRaw()};}}),input=aiInput(f);

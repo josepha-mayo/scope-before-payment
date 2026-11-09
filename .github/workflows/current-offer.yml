@@ -12,7 +12,7 @@ jobs:
     timeout-minutes: 10
     services:
       postgres:
-        image: postgres:17
+        image: postgres:18
         env:
           POSTGRES_DB: scope_test
           POSTGRES_USER: scope_fixture

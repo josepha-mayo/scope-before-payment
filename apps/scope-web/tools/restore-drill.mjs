@@ -64,9 +64,9 @@ async function main(){
   assert.equal(process.env.CI,'true');assert.equal(process.env.GITHUB_ACTIONS,'true');
   const url=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing'),container=process.env.SCOPE_RESTORE_CONTAINER;
   assert.equal(url.protocol,'postgres:');assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'5432');assert.equal(url.pathname,'/scope_test');assert.equal(url.username,'scope_fixture');assert.equal(url.password,'owned_ci_fixture_only');assert.equal(url.search,'');assert.equal(url.hash,'');assert.match(container||'',/^[a-f0-9]{64}$/);
-  assert.equal(await docker('inspect','--format','{{.Config.Image}}',container),'postgres:17');
+  assert.equal(await docker('inspect','--format','{{.Config.Image}}',container),'postgres:18');
   source=new pg.Pool({connectionString:url.href,max:3,connectionTimeoutMillis:3000});
-  const version=Number((await source.query('SHOW server_version_num')).rows[0].server_version_num);assert.ok(version>=170000&&version<180000);
+  const version=Number((await source.query('SHOW server_version_num')).rows[0].server_version_num);assert.ok(version>=180000&&version<190000);
   const sourceSystem=(await source.query('SELECT system_identifier::text AS id FROM pg_control_system()')).rows[0].id;
   const inContainer=await docker('exec',container,'psql','-U','scope_fixture','-d','scope_test','-At','-c','SELECT system_identifier::text FROM pg_control_system()');assert.equal(sourceSystem,inContainer);
   assert.equal((await source.query("SELECT 1 FROM pg_database WHERE datname='scope_restore_test'")).rowCount,0,'Refuse an existing target');

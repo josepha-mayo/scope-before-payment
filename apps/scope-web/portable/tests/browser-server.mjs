@@ -32,7 +32,7 @@ async function stop(){
 }
 async function main(){
   const details=JSON.parse(await docker('inspect',container))[0],owned=details.Config.Labels?.['dev.scope.auth-test'];
-  assert.equal(details.Config.Image,'postgres:17');
+  assert.equal(details.Config.Image,'postgres:18');
   assert.ok(owned&&details.Name==='/scope-auth-test-'+owned||process.env.CI==='true'&&process.env.GITHUB_ACTIONS==='true'&&url.port==='5432'&&url.password==='owned_ci_fixture_only');
   pool=new pg.Pool({connectionString:url.href,max:4,connectionTimeoutMillis:3000});
   assert.equal((await pool.query('SELECT system_identifier::text AS id FROM pg_control_system()')).rows[0].id,await docker('exec',container,'psql','-U','scope_fixture','-d','scope_test','-At','-c','SELECT system_identifier::text FROM pg_control_system()'));
