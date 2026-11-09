@@ -8,6 +8,7 @@ import {setTimeout as delay} from 'node:timers/promises';
 import pg from 'pg';
 import {build} from 'vite';
 import {startHostedFixture} from '../tests/browser/server.mjs';
+import {runRehearsalSession} from './rehearsal-session.mjs';
 
 const execute=promisify(execFile),root=fileURLToPath(new URL('../',import.meta.url));
 const docker=async(...args)=>(await execute('docker',args,{timeout:180000,maxBuffer:1024*1024,windowsHide:true})).stdout.trim();
@@ -70,17 +71,17 @@ if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.ur
  if(process.argv.length!==2)throw Error('usage_npm_run_rehearse_no_host_or_database_override');
  const controller=new AbortController();let finish;const stopped=new Promise(r=>finish=r);
  const stop=()=>{controller.abort();finish();};process.once('SIGINT',stop);process.once('SIGTERM',stop);
- let session;try{
+ try{
   console.log('Starting an owned local rehearsal. Requires Docker; first image download may take a minute.');
-  session=await launchRehearsal({signal:controller.signal});
-  console.log('SCOPE_REHEARSAL_READY '+JSON.stringify({origin:session.origin,containerName:session.containerName,migrations:session.migrations}));
-  console.log('Use invented data only. Sign-in, AI and PayPal replies are authored; no model or payment request is sent.');
-  console.log('Open the URL above. Instructions and both invented accounts are at the top. Ctrl+C removes this run’s disposable database.');
-  await stopped;
- }catch(error){if(!controller.signal.aborted){
-  const code=/^rehearsal_[a-z_]+$/.test(error?.code||'')?error.code:'rehearsal_start_failed';
-  console.error('SCOPE_REHEARSAL_FAILED '+JSON.stringify({code,detail:error?.detail??null}));
-  console.error('Rehearsal could not start. Use the stage code above to check prerequisites, database setup or the local app.');process.exitCode=1;
- }}
- finally{await session?.close();process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
+  const code=await runRehearsalSession({launch:launchRehearsal,signal:controller.signal,stopped,
+   ready:session=>{
+    console.log('SCOPE_REHEARSAL_READY '+JSON.stringify({origin:session.origin,containerName:session.containerName,migrations:session.migrations}));
+    console.log('Use invented data only. Sign-in, AI and PayPal replies are authored; no model or payment request is sent.');
+    console.log('Open the URL above. Instructions and both invented accounts are at the top. Ctrl+C removes this run’s disposable database.');
+   },failure:value=>{
+    console.error('SCOPE_REHEARSAL_FAILED '+JSON.stringify(value));
+    console.error('Rehearsal did not finish safely. Use the stage code above to check startup or owned database cleanup.');
+   }});
+  if(code!==0)process.exitCode=code;
+ }finally{process.removeListener('SIGINT',stop);process.removeListener('SIGTERM',stop);}
 }
