@@ -20,7 +20,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U scope_fixture -d scope_test"
+          --health-cmd "pg_isready --host 127.0.0.1 --port 5432 --username scope_fixture --dbname scope_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -45,6 +45,9 @@ jobs:
         env:
           SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
         run: npm test
+      - name: Prove TCP readiness excludes the temporary initdb server
+        working-directory: apps/scope-web
+        run: node tools/postgres-readiness-drill.mjs
       - name: Build production frontend and isolated browser fixture
         working-directory: apps/scope-web
         run: |
