@@ -1,5 +1,6 @@
 import {isIP} from 'node:net';
 import J from '../../../experiments/scope-to-quote/strict-json.js';
+import {withOAuthDeadline} from './oauth-http.mjs';
 
 const security={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
 const failure=(status,code)=>Response.json({error:{code}},{status,headers:security});
@@ -20,11 +21,16 @@ async function boundedJson(request,timeoutMs){
 
 // Public SDK surface is deliberately limited. In particular get-session,
 // account/token APIs, user mutation and account linking are not HTTP routes.
-export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000}){
+export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false}){
   if(new URL(origin).origin!==origin||!origin.startsWith('https://')||!Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000)throw Error('auth_boundary_configuration');
   return async function handle(request,transport){
     const url=new URL(request.url);
     if(url.origin!==origin)return failure(421,'auth_host_rejected');
+    if(url.pathname==='/api/auth/settings'){
+      if(request.method!=='GET'||url.search)return failure(400,'auth_settings_rejected');
+      let enrollment=false;try{enrollment=canEnroll()===true;}catch{}
+      return Response.json({providers:{github:true,email:false},existingAccountsOnly:!enrollment},{headers:security});
+    }
     const signIn=url.pathname==='/api/auth/sign-in/social',signOut=url.pathname==='/api/auth/sign-out',callback=url.pathname==='/api/auth/callback/github';
     if(!signIn&&!signOut&&!callback)return failure(404,'auth_route_not_found');
     if(request.method!==(callback?'GET':'POST'))return failure(405,'auth_method_rejected');
@@ -52,7 +58,7 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000}){
     if(!callback)headers.set('content-type','application/json');
     const body=signIn?{provider:'github',callbackURL:origin+'/?signin=complete',errorCallbackURL:origin+'/?signin=failed',disableRedirect:true}:{};
     try{
-      const response=await auth.handler(new Request(url,{method:request.method,headers,signal:request.signal,...(!callback?{body:JSON.stringify(body)}:{})}));
+      const response=await withOAuthDeadline(request.signal,()=>auth.handler(new Request(url,{method:request.method,headers,signal:request.signal,...(!callback?{body:JSON.stringify(body)}:{})})));
       const output=new Headers(response.headers);for(const [key,value]of Object.entries(security))output.set(key,value);
       // The SDK emits X-Retry-After. Also expose the standard header so a
       // client can wait without guessing or replaying a sign-in immediately.

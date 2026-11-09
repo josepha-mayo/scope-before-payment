@@ -14,7 +14,9 @@
     "build:test": "vite build --config tests/browser/vite.config.mjs",
     "rehearse": "node tools/rehearsal.mjs",
     "test:portable": "node --test --test-concurrency=1 portable/tests/*.test.mjs",
-    "test:portable:owned": "node portable/tools/owned-test.mjs test"
+    "test:portable:owned": "node portable/tools/owned-test.mjs test",
+    "build:portable": "vite build --config portable/vite.config.mjs",
+    "start:portable": "node portable/start.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
