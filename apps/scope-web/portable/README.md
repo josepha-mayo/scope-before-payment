@@ -33,6 +33,12 @@ provider-response override or unsigned identity fallback.
   SDK session's observation time. It is supplied only with the SDK's current
   verified-email flag and a valid session creation time; it is not a claim about
   GitHub's original email-confirmation date. Unverified email stays unverified.
+- Returning GitHub OAuth refreshes the verified email/profile. A missing fresh
+  verification rejects that sign-in and clears its previous verified-email flag
+  after the SDK resolves the exact returning provider subject. Old sessions can
+  still read established membership, but cannot retain invitation-routing or new
+  AI/payment authority through that old email flag. Same-email unlinked subjects
+  cannot downgrade or adopt the existing account.
 - `SCOPE_AUTH_SESSION_EPOCH` is required and lives outside the restored database.
   Rotate it **before reopening any access after a restore**. Otherwise a backup
   can resurrect a session whose logout happened after that backup. An old epoch

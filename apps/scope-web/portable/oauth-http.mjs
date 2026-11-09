@@ -12,12 +12,14 @@ export function installOAuthFetchGuard(){
     return upstream(input,{...options,signal:AbortSignal.any(signals)});
   };
   globalThis.fetch=guarded;
-  return async()=>{
-    for(const controller of active)controller.abort(Error('oauth_request_stopped'));
+  const cancel=()=>{for(const controller of active)controller.abort(Error('oauth_request_stopped'));};
+  const release=async()=>{
+    cancel();
     await Promise.resolve();
     if(globalThis.fetch!==guarded)throw Error('oauth_transport_owner_changed');
     globalThis.fetch=upstream;installed=false;
   };
+  release.cancel=cancel;return release;
 }
 export async function withOAuthDeadline(requestSignal,operation,timeoutMs=12000){
   if(typeof operation!=='function'||!Number.isInteger(timeoutMs)||timeoutMs<5||timeoutMs>12000)throw Error('oauth_deadline_configuration');

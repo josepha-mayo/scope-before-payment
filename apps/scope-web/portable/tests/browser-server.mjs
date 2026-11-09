@@ -47,7 +47,7 @@ async function main(){
   const verifiedPool=new pg.Pool({connectionString:url.href,max:1,connectionTimeoutMillis:3000,ssl:{rejectUnauthorized:true,ca}});
   try{const deadline=Date.now()+5000;for(;;){try{assert.equal((await verifiedPool.query('SELECT ssl FROM pg_stat_ssl WHERE pid=pg_backend_pid()')).rows[0].ssl,true);break;}catch(error){if(Date.now()>deadline)throw error;await delay(100);}}}finally{await verifiedPool.end();}
   const untrustedPool=new pg.Pool({connectionString:url.href,max:1,connectionTimeoutMillis:3000,ssl:{rejectUnauthorized:true}});
-  try{await assert.rejects(untrustedPool.query('SELECT 1'));}finally{await untrustedPool.end();}
+  try{await assert.rejects(untrustedPool.query('SELECT 1'),error=>['DEPTH_ZERO_SELF_SIGNED_CERT','SELF_SIGNED_CERT_IN_CHAIN','UNABLE_TO_VERIFY_LEAF_SIGNATURE'].includes(error.code));}finally{await untrustedPool.end();}
   for(const role of ['creator','buyer'])await pool.query("INSERT INTO scope_identity.actor_links(provider,provider_subject,actor_id,created_via) VALUES('github',$1,$2,'legacy-migration')",[subjects[role],actors[role]]);
   const principal=role=>({id:actors[role],email:role+'@portable.invented.example',emailVerified:true,confirmedAt:'2026-11-07T00:00:00Z'});
   const oldAi={available:()=>true,generate:async()=>{authoredAiCalls++;throw Error('authored_old_ai_unknown');}};

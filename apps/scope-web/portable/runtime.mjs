@@ -62,7 +62,7 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort??configuration.port,listenHost,resolve);});
     async function close(){
       if(closing)return;closing=true;
-      const stopped=new Promise(resolve=>server.close(resolve));server.closeIdleConnections();
+      const stopped=new Promise(resolve=>server.close(resolve));releaseTransport.cancel();server.closeIdleConnections();
       const force=setTimeout(()=>server.closeAllConnections(),10000);force.unref();
       try{await stopped;}finally{clearTimeout(force);try{await releaseTransport();}finally{await pool.end();}}
     }

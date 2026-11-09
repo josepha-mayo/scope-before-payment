@@ -1,6 +1,7 @@
 -- Operator-applied, never startup DDL. This is a NOLOGIN permission group,
 -- not a credential. Fail if its name already exists; review that role first.
 CREATE ROLE scope_portable_reader NOLOGIN;
+DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO scope_portable_reader',current_database()); END $$;
 GRANT USAGE ON SCHEMA scope_app,scope_identity TO scope_portable_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA scope_app TO scope_portable_reader;
 GRANT SELECT ON scope_identity.actor_links TO scope_portable_reader;
