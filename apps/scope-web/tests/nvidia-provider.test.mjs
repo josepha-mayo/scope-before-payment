@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomBytes,createHash} from 'node:crypto';
 import {prepareDraft,profile,model} from '../server/ai-protocol.mjs';
-import {draftProtocol,providerProtocol,nvidiaProfile,nvidiaModel} from '../server/ai-profiles.mjs';
+import {draftProtocol,providerProtocol,historicalNvidiaProfile,nvidiaProfile,nvidiaModel} from '../server/ai-profiles.mjs';
+import N from '../../../experiments/scope-to-quote/nvidia-partial-request.js';
 import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
 import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
 const messages=[{id:'M1',role:'merchant',text:'One digital heron PNG. Own website only; no resale. January 12, two rounds, USD87 before work.'}];
@@ -19,6 +20,9 @@ test('immutable profile registry preserves exact historical Claude bytes and bot
   assert.equal(draftProtocol('__proto__'),null);assert.equal(draftProtocol('future-profile'),null);
   const forged='{"fields":{"price":87},"exclusions":{},"questions":[]}';
   assert.throws(()=>stored.validate(forged));assert.throws(()=>portable.validate(forged));
+  const historical=draftProtocol(historicalNvidiaProfile).prepare(source),unchanged=N.prepare(source);
+  assert.equal(historical.request,JSON.stringify(unchanged.body));assert.equal(historical.requestHash,unchanged.requestHash);
+  assert.notEqual(historical.request,portable.request);assert.notEqual(historical.requestHash,portable.requestHash);
 });
 
 test('NVIDIA transport is lazy, fixed-destination, one-call and keeps reasoning/private errors out of receipts',async()=>{

@@ -216,10 +216,18 @@ profiles fail closed without loading credentials or minting dispatch authority.
 25-second total deadline, no retry, redirect or failover, bounded UTF-8 response
 handling, exact model/terminal-answer checks and duplicate-key rejection. Keys
 are loaded lazily by a trusted server callback and never returned to the browser.
-The runtime remains compiled read-only and does not construct this provider.
+The runtime starts read-only by default and constructs this provider only with
+the explicit write/provider settings and verified narrow SQL permissions above.
 Native credit availability, a real retained model result, server-secret
 provisioning and accurate provider-specific user consent remain activation gates.
 No authored provider response establishes actual NVIDIA availability.
+
+The original NVIDIA v1 request profile remains byte-for-byte reproducible for
+historical receipts. The separate `nvidia-nemotron-3-5-lightning-commission-v2`
+profile gives future reviews explicit citation and text limits, distinguishes
+final exclusions from superseded wishlists, and covers creative services beyond
+illustration. Both use the same strict validator. Invalid replies remain saved;
+switching profiles does not permit retrying the same source or reset any quota.
 
 Official NVIDIA reference:
 https://docs.api.nvidia.com/nim/reference/nvidia-nemotron-3-5-lightning-30b-a3b-infer
