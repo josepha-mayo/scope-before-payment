@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { sha } from './ai-protocol.mjs';
+import { sha,profile as legacyProfile } from './ai-protocol.mjs';
 import { draftProtocol,providerProtocol } from './ai-profiles.mjs';
 
 export function createDraftMethods({ transaction,principal,workspace,lockActor,previous,record,request,snapshot,checkedSource,fingerprintFor,fail,provider }) {
@@ -16,7 +16,8 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
       WHERE c.workspace_id=$1 AND ($2::uuid IS NULL OR c.id=$2) ORDER BY c.created_at DESC,c.id DESC LIMIT 1`,[id,claimId])).rows[0];
     const configured=providerProtocol(provider),model=configured?.model??null;
     const available=!!configured&&provider?.available()===true;
-    if(!row)return {workspaceId:id,draft:null,available,model};
+    const profile=configured?.profile??null;
+    if(!row)return {workspaceId:id,draft:null,available,model,profile};
     let prepared,review=null;
     try{
       const src=checkedSource({version:row.source_version,binding:row.source_binding,messages:row.messages});
@@ -27,7 +28,7 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
       if(row.state && sha(row.raw_text)!==row.raw_hash)throw Error();
       if(row.state==='validated')review=prepared.validate(row.raw_text).review;
     }catch{fail('workspace_storage_unconfirmed',503);}
-    return {workspaceId:id,available,model,draft:{id:row.id,model:row.model,sourceVersion:row.source_version,sourceBinding:row.source_binding,
+    return {workspaceId:id,available,model,profile,draft:{id:row.id,model:row.model,profile:row.profile,sourceVersion:row.source_version,sourceBinding:row.source_binding,
       stale:row.source_version!==w.current_source_version,state:row.state||'unconfirmed',code:row.code||null,
       createdAt:row.created_at.toISOString(),completedAt:row.completed_at?.toISOString()||null,review,usage:row.usage||null}};
   }
@@ -35,8 +36,9 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
     async readDraft(id){const user=(await principal()).id;return transaction(client=>result(client,user,id),true);},
     status:result,
     async requestDraft(id,input){
-      request(input,['sourceVersion','sourceBinding','confirmation']);input=snapshot(input);
-      request(input,['sourceVersion','sourceBinding','confirmation']);
+      const keys=['sourceVersion','sourceBinding','confirmation',...(input&&Object.hasOwn(input,'providerProfile')?['providerProfile']:[])];
+      request(input,keys);input=snapshot(input);
+      request(input,keys);
       if(input.confirmation!=='send-saved-conversation-for-ai-review')fail('ai_confirmation_required',422);
       const current=await principal(),user=current.id,fingerprint=fingerprintFor({kind:'draft',workspaceId:id,input});
       let dispatch=null;
@@ -48,6 +50,9 @@ export function createDraftMethods({ transaction,principal,workspace,lockActor,p
         if(!current.emailVerified)fail('ai_verified_account_required',403);
         if(!provider?.available())fail('ai_unavailable',503);
         const protocol=providerProtocol(provider);if(!protocol)fail('ai_unavailable',503);
+        // Legacy Claude request bytes remain replayable. A new recipient always
+        // requires the exact profile disclosed by the browser before admission.
+        if(input.providerProfile!==protocol.profile&&!(input.providerProfile===undefined&&protocol.profile===legacyProfile))fail('ai_provider_changed',409);
         const src=checkedSource((await client.query('SELECT version,binding,messages FROM scope_app.sources WHERE workspace_id=$1 AND version=$2',[id,w.current_source_version])).rows[0]);
         if(input.sourceVersion!==src.version || input.sourceBinding!==src.binding)fail('workspace_source_stale');
         if((await client.query('SELECT 1 FROM scope_app.ai_claims WHERE actor_id=$1 AND source_binding=$2',[user,src.binding])).rowCount)fail('ai_source_already_reviewed');

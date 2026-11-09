@@ -1,5 +1,6 @@
+import {aiProviderDisclosure} from './ai-disclosures.mjs';
 // Each copy requires current-source review and an empty destination.
-export function mountAiReview({parent,h,button,check,field,context,load,send,copy,markEdit,dataUseText='Claude Haiku 5.5 through Netlify AI Gateway. Saved conversation excerpts are sent to Anthropic only when you explicitly request AI review. Scope privately retains the request and result.'}) {
+export function mountAiReview({parent,h,button,check,field,context,load,send,copy,markEdit,dataUseText}) {
   const panel=h('section',undefined,'ai-review');parent.append(panel);
   let disposed=false,saved=null,reading=false,consent=null,start=null,status=null,rows=[],loadedKey=null,renderedKey=null,observedGeneration=-1,localEdits=false;
   const labels={deliverable:'What you will deliver',usage:'Permitted uses and exclusions',delivery:'Delivery commitment',revisions:'Revision allowance',terms:'Payment timing and other terms'};
@@ -28,9 +29,11 @@ export function mountAiReview({parent,h,button,check,field,context,load,send,cop
     panel.replaceChildren(h('p','ASSISTED REVIEW','eyebrow'),h('h2','Find the terms in the conversation'));
     rows=[];consent=null;start=null;status=null;
     if(!saved){panel.append(h('p',reading?'Checking saved AI review…':'AI review status is unavailable.'),button('Check AI review status',refresh,true));return;}
-    const c=context(),draft=saved.draft;
+    const c=context(),draft=saved.draft,provider=aiProviderDisclosure(saved.profile,saved.model);
     panel.append(h('p','Check AI suggestions against the complete messages. Correct the text, then copy only the fields you need. You set the price.'));
     if(draft){
+      const historical=aiProviderDisclosure(draft.profile,draft.model);
+      panel.append(h('p',historical?'Saved review: '+historical.name:'Saved review from an earlier integration.'));
       status=h('p',savedStatus(),'ai-state');panel.append(status);
       if(draft.stale)panel.append(h('p','This saved review belongs to an older conversation. It cannot be copied.'));
       if(draft.state!=='validated')panel.append(h('p',draft.state==='invalid'?'The response did not pass validation. It has been retained and will not be regenerated for this conversation.':'The provider outcome is unconfirmed. This attempt is retained; nothing will be resent.'));
@@ -55,17 +58,18 @@ export function mountAiReview({parent,h,button,check,field,context,load,send,cop
       panel.append(button('Check saved AI result',refresh,true));
     }
     if(!draft || draft.stale){
-      if(saved.available){
-        const ack=check('Send excerpts from this saved conversation to Anthropic through Netlify for AI review. Scope privately retains this request and its result.',()=>actions());consent=ack.input;
+      if(saved.available&&provider){
+        const ack=check(provider.consent,()=>actions());consent=ack.input;
         start=button('Review saved conversation with AI',async()=>{
           actions();if(start.disabled)return;const before=context(),expected=key(before);start.disabled=true;
-          const result=await send({sourceVersion:before.source.version,sourceBinding:before.source.binding,confirmation:'send-saved-conversation-for-ai-review'});
+          const result=await send({sourceVersion:before.source.version,sourceBinding:before.source.binding,providerProfile:provider.profile,confirmation:'send-saved-conversation-for-ai-review'});
           if(disposed||key(context())!==expected)return;
           consent.checked=false;if(result){saved=result;loadedKey=expected;render();}else await refresh();
         });panel.append(ack.label,start);
       }else panel.append(h('p',c.recovery?'New AI review is unavailable while changes are paused. Saved review history remains available.':'AI is unavailable on this deployment. You can still write and publish a manually reviewed offer.'));
     }
-    const limits=h('details',undefined,'ai-limits');limits.append(h('summary','AI provider, privacy and limits'),h('p',dataUseText),h('p','One attempt per saved conversation, three per account per UTC day, eight per workspace and fifty across this site per UTC month. Unconfirmed and invalid attempts count.'));panel.append(limits);
+    const privacyText=saved.available&&provider?provider.dataUseText:dataUseText||provider?.dataUseText||'New AI review is unavailable on this host. Saved reviews identify their original provider.';
+    const limits=h('details',undefined,'ai-limits');limits.append(h('summary','AI provider, privacy and limits'),h('p',privacyText),h('p','One attempt per saved conversation, three per account per UTC day, eight per workspace and fifty across this site per UTC month. Unconfirmed and invalid attempts count.'));panel.append(limits);
     observedGeneration=c.generation;actions();
   }
   function actions(){
