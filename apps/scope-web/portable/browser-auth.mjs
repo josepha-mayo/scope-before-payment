@@ -11,7 +11,7 @@ export function createBrowserIdentity({location,history,channel,client=createAut
     async getSettings(){
       const value=accepted(await client.$fetch('/settings',{method:'GET'}));
       if(value?.providers?.github!==true||value.providers.email!==false)throw Error('sign_in_unavailable');
-      return {providers:{github:true,email:false},disableSignup:true,...(value.existingAccountsOnly===true?{notice:'This host is undergoing migration. Existing accounts can sign in; new accounts cannot access workspaces yet.'}:{})};
+      return {providers:{github:true,email:false},disableSignup:true,...(value.existingAccountsOnly===true?{notice:value.readOnly===false?'Sign-in is currently limited to existing accounts. New accounts cannot access workspaces yet.':'This host is undergoing migration. Existing accounts can sign in; new accounts cannot access workspaces yet.'}:{})};
     },
     async oauthLogin(provider){
       if(provider!=='github')throw Error('provider_unavailable');

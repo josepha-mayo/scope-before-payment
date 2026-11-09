@@ -7,10 +7,12 @@ import {createRequestReporter} from '../server/observability.mjs';
 import {createPortableApplication} from './application.mjs';
 import {runtimeConfiguration} from './runtime-config.mjs';
 import {installOAuthFetchGuard} from './oauth-http.mjs';
+import {verifyRuntimeRole} from './permissions.mjs';
+import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
+import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
 
-// This release qualifies a real migrated host in read-only mode. No environment
-// variable can enable writes or AI/PayPal dispatch before their native gates.
-export const portableWritesEnabled=false;
+// Read-only remains the default. Writes require explicit operator configuration,
+// a cutover receipt and the verified narrow SQL grants; PayPal stays unconstructed.
 const appTables=['workspaces','sources','quotes','acceptances','operations','invitations','invitation_revocations','change_requests','change_responses','change_withdrawals','ai_claims','ai_receipts','checkout_attempts','checkout_calls','checkout_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts'];
 const identityTables=['users','accounts','sessions','verifications','rate_limits','actor_links'];
 
@@ -23,14 +25,7 @@ export async function verifyMigratedSchema(pool,configuration){
   const workspace=await pool.query('SELECT 1 FROM scope_app.workspaces WHERE merchant_id=$1 OR buyer_id=$1 LIMIT 1',[configuration.legacyActor]);
   if(workspace.rows.length!==1)throw Error('runtime_existing_history_required');
 }
-export async function verifyReaderRole(pool){
-  const role=(await pool.query('SELECT rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE rolname=current_user')).rows[0];
-  if(!role||Object.values(role).some(value=>value!==false))throw Error('runtime_database_role_too_broad');
-  const privileges=await pool.query("SELECT name,has_table_privilege(current_user,name,'INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS writable FROM unnest($1::text[]) AS name",[appTables.map(name=>'scope_app.'+name)]);
-  if(privileges.rows.some(row=>row.writable))throw Error('runtime_database_role_too_broad');
-  const identity=await pool.query("SELECT has_table_privilege(current_user,'scope_identity.actor_links','INSERT,UPDATE,DELETE,TRUNCATE,REFERENCES,TRIGGER') AS writable");
-  if(identity.rows[0]?.writable!==false)throw Error('runtime_database_role_too_broad');
-}
+export const verifyReaderRole=pool=>verifyRuntimeRole(pool);
 
 export async function verifyPortableBuild(directory){
   const manifest=JSON.parse(await readFile(path.join(directory,'.vite','manifest.json'),'utf8')),entry=manifest['portable/index.html'];
@@ -48,15 +43,19 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
   try{
     await verifyPortableBuild(staticDirectory);phase='schema';
     await verifyMigratedSchema(pool,configuration);
-    await verifyReaderRole(pool);
+    await verifyRuntimeRole(pool,{write:configuration.mode==='write',ai:configuration.ai==='nvidia',enrollment:configuration.enrollment});
     releaseTransport=installOAuthFetchGuard();phase='listen';
-    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:()=>portableWritesEnabled,report});
+    const recovery=createRecoveryPolicy({read:key=>env[key]}),writable=()=>configuration.mode==='write'&&recovery.writable();
+    const canEnroll=()=>writable()&&configuration.enrollment;
+    const draftProvider=configuration.ai==='nvidia'?guardDraftProvider(createNvidiaDraftProvider({loadKey:async()=>env.SCOPE_NVIDIA_API_KEY,available:writable}),recovery):undefined;
+    const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:false,registrationEnabled:canEnroll()});
+    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider});
     server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,
       async staticResponse(request){
         const url=new URL(request.url);if(url.pathname!=='/healthz')return null;
         const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
         if(url.search||closing)return Response.json({status:'unavailable'},{status:503,headers});
-        try{await pool.query('SELECT 1');return Response.json({status:'ready',mode:'read-only'},{headers});}catch{return Response.json({status:'unavailable'},{status:503,headers});}
+        try{await pool.query('SELECT 1');return Response.json({status:'ready',mode:capabilities().mode},{headers});}catch{return Response.json({status:'unavailable'},{status:503,headers});}
       },
     });
     await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(listenPort??configuration.port,listenHost,resolve);});
@@ -66,7 +65,7 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
       const force=setTimeout(()=>server.closeAllConnections(),10000);force.unref();
       try{await stopped;}finally{clearTimeout(force);try{await releaseTransport();}finally{await pool.end();}}
     }
-    return {server,close};
+    return {server,close,capabilities};
   }catch{
     server?.closeAllConnections();if(server?.listening)await new Promise(resolve=>server.close(resolve));try{await releaseTransport?.();}finally{await pool.end();}throw Object.assign(Error('runtime_start_unavailable'),{code:'runtime_'+phase+'_failed'});
   }

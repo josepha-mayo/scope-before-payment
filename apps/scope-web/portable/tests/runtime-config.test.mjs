@@ -15,3 +15,15 @@ test('a portable runtime requires an explicit legacy mapping and never falls bac
   for(const key of ['SCOPE_LEGACY_ACTOR_ID','SCOPE_LEGACY_GITHUB_SUBJECT'])assert.throws(()=>runtimeConfiguration({...env,[key]:undefined}));
   for(const port of ['0','-1','65536','1x'])assert.throws(()=>runtimeConfiguration({...env,PORT:port}));
 });
+
+test('writes, provider dispatch and enrollment require separate explicit settings and a cutover receipt',()=>{
+  const env=environment(),read=runtimeConfiguration(env);assert.equal(read.mode,'read-only');assert.equal(read.ai,'off');assert.equal(read.enrollment,false);
+  assert.throws(()=>runtimeConfiguration({...env,SCOPE_PORTABLE_MODE:'write'}),/cutover_receipt_required/);
+  for(const [key,value] of [['SCOPE_PORTABLE_MODE','WRITE'],['SCOPE_PORTABLE_AI_PROVIDER','unknown'],['SCOPE_PORTABLE_ENROLLMENT','true']])assert.throws(()=>runtimeConfiguration({...env,[key]:value}),/activation_invalid/);
+  for(const extra of [{SCOPE_PORTABLE_AI_PROVIDER:'nvidia'},{SCOPE_PORTABLE_ENROLLMENT:'enabled'}])assert.throws(()=>runtimeConfiguration({...env,...extra}),/activation_invalid/);
+  const base={...env,SCOPE_PORTABLE_MODE:'write',SCOPE_PORTABLE_CUTOVER_RECEIPT:'a'.repeat(64)};
+  const manual=runtimeConfiguration(base);assert.equal(manual.mode,'write');assert.equal(manual.ai,'off');assert.equal(manual.enrollment,false);
+  assert.throws(()=>runtimeConfiguration({...base,SCOPE_PORTABLE_AI_PROVIDER:'nvidia'}),/ai_configuration_required/);
+  const enabled=runtimeConfiguration({...base,SCOPE_PORTABLE_AI_PROVIDER:'nvidia',SCOPE_PORTABLE_ENROLLMENT:'enabled',SCOPE_NVIDIA_API_KEY:['nvapi',randomBytes(24).toString('hex')].join('-')});
+  assert.equal(enabled.ai,'nvidia');assert.equal(enabled.enrollment,true);assert.equal(enabled.pool.ssl.rejectUnauthorized,true);
+});
