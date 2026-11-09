@@ -25,9 +25,12 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          package-manager-cache: false
           node-version: '24'
       - name: Resolve deployment paths offline with the official Netlify resolver
         working-directory: tools/netlify-config-check
@@ -66,23 +69,29 @@ jobs:
       - name: Run the public local rehearsal launcher through Chromium and remove its owned container
         working-directory: tools/browser-tests
         run: node rehearsal-smoke.js
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
+          archive: true
+          include-hidden-files: false
           name: local-rehearsal-receipt
           path: |
             tools/browser-tests/rehearsal-receipt.json
             tools/browser-tests/rehearsal-overview.png
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
+          archive: true
+          include-hidden-files: false
           name: owned-restore-receipt
           path: apps/scope-web/restore-receipt.json
           retention-days: 7
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
+          archive: true
+          include-hidden-files: false
           name: hosted-browser-report
           path: |
             tools/browser-tests/playwright-report
@@ -92,9 +101,12 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          package-manager-cache: false
           node-version: '24'
       - name: Native SQLite and synthetic DPAPI contracts (no provider IO)
         run: node --test --test-concurrency=1 experiments/scope-to-quote/tests/nvidia-key-loader-test.js experiments/scope-to-quote/tests/nvidia-service-test.js experiments/scope-to-quote/tests/nvidia-launcher-test.js experiments/scope-to-quote/tests/partial-draft-test.js experiments/scope-to-quote/tests/nonprice-protocol-test.js experiments/scope-to-quote/tests/mode-disclosure-test.js experiments/scope-to-quote/tests/first-run-recovery-test.js
@@ -102,11 +114,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          package-manager-cache: false
           node-version: '24'
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.12'
       - name: Verify native locking prerequisite
@@ -128,9 +143,11 @@ jobs:
       - name: Native browser complete authored journey
         working-directory: tools/browser-tests
         run: npm test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
+          archive: true
+          include-hidden-files: false
           name: authored-browser-report
           path: |
             tools/browser-tests/playwright-report
@@ -140,7 +157,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Fetch only the checked-out commit ancestry
         run: |
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
