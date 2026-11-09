@@ -17,6 +17,7 @@ runtime/
 apps/scope-web/dist/
 apps/scope-web/dist-test/
 apps/scope-web/restore-receipt.json
+apps/scope-web/portable/restore-receipt.json
 /production-smoke-receipt.json
 
 *.pem

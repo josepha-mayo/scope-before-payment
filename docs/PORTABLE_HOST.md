@@ -26,5 +26,12 @@ This module is not a complete production launch command. Before a cutover:
 - Verify billing eligibility and funded resource limits, then qualify the real
   buyer/PayPal/webhook journey. Credits alone do not prove those integrations.
 
+The separate [`portable` authentication adapter](../apps/scope-web/portable/README.md)
+now supplies a maintained SDK path for GitHub sign-in, immutable mappings to
+legacy Scope actors, current-database session revocation and an external restore
+epoch. It has no production test-login route and does not change Netlify's
+deployed identity service. Its owned SDK/SQL/HTTP and combined-schema restore
+checks are distinct from native provider authorization and production cutover.
+
 Do not publish the authored fixture or initialize an empty payment journal as
 a migrated production app. The full original application goal remains open.

@@ -9,6 +9,7 @@ import pg from 'pg';
 import {build} from 'vite';
 import {startHostedFixture} from '../tests/browser/server.mjs';
 import {runRehearsalSession} from './rehearsal-session.mjs';
+import {ownedPostgresProbe} from './postgres-readiness.mjs';
 
 const execute=promisify(execFile),root=fileURLToPath(new URL('../',import.meta.url));
 const docker=async(...args)=>(await execute('docker',args,{timeout:180000,maxBuffer:1024*1024,windowsHide:true})).stdout.trim();
@@ -39,7 +40,7 @@ export async function launchRehearsal({signal}={}){
   phase='database_create';
   container=await docker('create','--name',name,'--label',label+'='+nonce,
    '--publish','127.0.0.1::5432','--env','POSTGRES_DB=scope_test','--env','POSTGRES_USER=scope_fixture',
-   '--env','POSTGRES_PASSWORD=owned_local_rehearsal_only','--health-cmd','pg_isready -U scope_fixture -d scope_test',
+   '--env','POSTGRES_PASSWORD=owned_local_rehearsal_only','--health-cmd',ownedPostgresProbe.join(' '),
    '--health-interval','1s','--health-timeout','3s','--health-retries','30','postgres:17');
   if(!/^[a-f0-9]{64}$/.test(container))throw Error('owned_container_id_unconfirmed');
   phase='database_start';check();await docker('start',container);

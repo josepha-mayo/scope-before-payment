@@ -52,7 +52,7 @@ export function createNodeHttpServer({getOrigin,staticDirectory,indexFile='index
       if(webhook)return webhook(request);
       return method==='POST'?failure(503,'webhook_unavailable'):new Response(null,{status:405,headers:{...staticHeaders,'Cache-Control':'private, no-store',Allow:'POST'}});
     }
-    if(url.pathname.startsWith('/api/'))return api(request);
+    if(url.pathname.startsWith('/api/'))return api(request,Object.freeze({remoteAddress:incoming.socket.remoteAddress}));
     if(!['GET','HEAD'].includes(method))return new Response(null,{status:405,headers:{...staticHeaders,'Cache-Control':'private, no-store',Allow:'GET, HEAD'}});
     if(staticResponse){const response=await staticResponse(request);if(response!==null&&response!==undefined)return response;}
     const asset=/^\/assets\/[A-Za-z0-9_.-]+$/.test(url.pathname);
