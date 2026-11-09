@@ -70,6 +70,8 @@ async function send(response,incoming,outgoing){
   if(!(response instanceof Response))throw Error('invalid_server_response');
   if(outgoing.destroyed)return;
   const headers={};
+  // Ignored by browsers over plain HTTP; enforced on the real TLS host.
+  headers['strict-transport-security']='max-age=31536000';
   for(const[key,value]of response.headers)if(!hopHeaders.has(key)&&key!=='set-cookie')headers[key]=value;
   const cookies=response.headers.getSetCookie();if(cookies.length)headers['set-cookie']=cookies;
   outgoing.writeHead(response.status,headers);

@@ -26,8 +26,17 @@ export function authOptions({pool,configuration}){
     trustedOrigins:[c.origin],
     database:{dialect:new PostgresDialect({pool}),type:'postgres',schemaName:'scope_identity',transaction:true},
     emailAndPassword:{enabled:false},
-    socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email']}},
-    user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'}},
+    socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true}},
+    user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'},
+      async validateUserInfo({user,source}){
+        if(source.method!=='oauth'||source.oauth?.providerId!=='github'||user.emailVerified===true)return;
+        // The SDK invokes returning sign-in validation only after resolving the
+        // exact provider subject. A missing fresh proof must not preserve its
+        // previous verified flag. This can only remove routing authority; an
+        // unrelated same-email account never reaches this returning-user hook.
+        if(source.action==='sign-in'&&uuid.test(user.id??''))await pool.query('UPDATE scope_identity.users SET email_verified=false,updated_at=now() WHERE id=$1',[user.id]);
+        return {error:'verified_github_email_required'};
+      }},
     session:{modelName:'sessions',fields:{userId:'user_id',expiresAt:'expires_at',createdAt:'created_at',updatedAt:'updated_at',ipAddress:'ip_address',userAgent:'user_agent'},
       expiresIn:86400,updateAge:1800,freshAge:600,cookieCache:{enabled:false},
       additionalFields:{scopeEpoch:{type:'string',required:true,input:false,returned:true,fieldName:'scope_epoch'}}},

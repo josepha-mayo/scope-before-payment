@@ -23,7 +23,7 @@ try{
   const ports=details.NetworkSettings.Ports['5432/tcp'];
   if(ports?.length!==1||ports[0].HostIp!=='127.0.0.1'||!/^\d{1,5}$/.test(ports[0].HostPort))throw Error('owned_loopback_required');
   const env={...process.env,SCOPE_AUTH_TEST_CONTAINER:container,SCOPE_TEST_DATABASE_URL:'postgres://scope_fixture:owned_local_auth_only@127.0.0.1:'+ports[0].HostPort+'/scope_test'};
-  const args=mode==='generate'?['portable/tools/generate-schema.mjs']:['--test','--test-concurrency=1','portable/tests/config.test.mjs','portable/tests/auth.test.mjs'];
+  const args=mode==='generate'?['portable/tools/generate-schema.mjs']:['--test','--test-concurrency=1','portable/tests/*.test.mjs'];
   async function node(args){const result=await execute(process.execPath,args,{cwd:fileURLToPath(new URL('../../',import.meta.url)),env,timeout:180000,maxBuffer:1024*1024,windowsHide:true});process.stdout.write(result.stdout);process.stderr.write(result.stderr);}
   try{if(mode==='test')await node(['--test','--test-concurrency=1','tests/*.test.mjs']);await node(args);if(mode==='test')await node(['portable/tools/recovery-drill.mjs']);}
   catch(error){process.stdout.write(error.stdout??'');process.stderr.write(error.stderr??'');process.exitCode=1;}

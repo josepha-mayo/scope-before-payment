@@ -1,5 +1,5 @@
 // Each copy requires current-source review and an empty destination.
-export function mountAiReview({parent,h,button,check,field,context,load,send,copy,markEdit}) {
+export function mountAiReview({parent,h,button,check,field,context,load,send,copy,markEdit,dataUseText='Claude Haiku 5.5 through Netlify AI Gateway. Saved conversation excerpts are sent to Anthropic only when you explicitly request AI review. Scope privately retains the request and result.'}) {
   const panel=h('section',undefined,'ai-review');parent.append(panel);
   let disposed=false,saved=null,reading=false,consent=null,start=null,status=null,rows=[],loadedKey=null,renderedKey=null,observedGeneration=-1,localEdits=false;
   const labels={deliverable:'What you will deliver',usage:'Permitted uses and exclusions',delivery:'Delivery commitment',revisions:'Revision allowance',terms:'Payment timing and other terms'};
@@ -63,9 +63,9 @@ export function mountAiReview({parent,h,button,check,field,context,load,send,cop
           if(disposed||key(context())!==expected)return;
           consent.checked=false;if(result){saved=result;loadedKey=expected;render();}else await refresh();
         });panel.append(ack.label,start);
-      }else panel.append(h('p','AI is unavailable on this deployment. You can still write and publish a manually reviewed offer.'));
+      }else panel.append(h('p',c.recovery?'New AI review is unavailable while changes are paused. Saved review history remains available.':'AI is unavailable on this deployment. You can still write and publish a manually reviewed offer.'));
     }
-    const limits=h('details',undefined,'ai-limits');limits.append(h('summary','AI provider, privacy and limits'),h('p','Claude Haiku 5.5 through Netlify AI Gateway. Saved conversation excerpts are sent to Anthropic only when you explicitly request AI review. Scope privately retains the request and result.'),h('p','One attempt per saved conversation, three per account per UTC day, eight per workspace and fifty across this site per UTC month. Unconfirmed and invalid attempts count.'));panel.append(limits);
+    const limits=h('details',undefined,'ai-limits');limits.append(h('summary','AI provider, privacy and limits'),h('p',dataUseText),h('p','One attempt per saved conversation, three per account per UTC day, eight per workspace and fifty across this site per UTC month. Unconfirmed and invalid attempts count.'));panel.append(limits);
     observedGeneration=c.generation;actions();
   }
   function actions(){

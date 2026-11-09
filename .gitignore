@@ -16,8 +16,10 @@ runtime/
 # Hosted app build output
 apps/scope-web/dist/
 apps/scope-web/dist-test/
+apps/scope-web/dist-portable/
 apps/scope-web/restore-receipt.json
 apps/scope-web/portable/restore-receipt.json
+tools/browser-tests/portable-*.png
 /production-smoke-receipt.json
 
 *.pem

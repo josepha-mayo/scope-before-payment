@@ -4,7 +4,7 @@ module.exports = defineConfig({
   testDir: '.', testMatch: '*.spec.js', timeout: 60000,
   fullyParallel: false, workers: 1, retries: 0,
   projects: [
-    { name: 'local', testIgnore: 'hosted-workspaces.spec.js' },
+    { name: 'local', testIgnore: ['hosted-workspaces.spec.js','**/portable/**'] },
     { name: 'hosted', testMatch: 'hosted-workspaces.spec.js' },
   ],
   reporter: [['list'], ['html', { open: 'never' }]],

@@ -8,7 +8,7 @@ import {createRequestPrincipal} from './principal.mjs';
 // No secret, SDK response, provider account or auth-user ID reaches the app UI.
 export function createPortableApplication({pool,configuration,canWrite=()=>false,report=()=>{},draftProvider,checkoutProvider}){
   const auth=createPortableAuth({pool,configuration});
-  const authentication=createAuthBoundary({auth,origin:configuration.origin});
+  const authentication=createAuthBoundary({auth,origin:configuration.origin,canEnroll:canWrite});
   return async(request,transport)=>{
     const url=new URL(request.url);
     if(url.origin!==configuration.origin)return new Response(null,{status:421,headers:{'Cache-Control':'private, no-store'}});
