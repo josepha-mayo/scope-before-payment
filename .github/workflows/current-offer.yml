@@ -50,6 +50,17 @@ jobs:
         run: |
           npm run build
           npm run build:test
+      - name: Portable SDK sessions and immutable legacy identity mapping (no external requests)
+        working-directory: apps/scope-web
+        env:
+          SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
+        run: npm run test:portable
+      - name: Restore application and portable identity together; fence resurrected sessions
+        working-directory: apps/scope-web
+        env:
+          SCOPE_TEST_DATABASE_URL: postgres://scope_fixture:owned_ci_fixture_only@127.0.0.1:5432/scope_test
+          SCOPE_AUTH_TEST_CONTAINER: ${{ job.services.postgres.id }}
+        run: node portable/tools/recovery-drill.mjs
       - name: Install hosted browser checks
         working-directory: tools/browser-tests
         run: |
@@ -86,6 +97,14 @@ jobs:
           include-hidden-files: false
           name: owned-restore-receipt
           path: apps/scope-web/restore-receipt.json
+          retention-days: 7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          archive: true
+          include-hidden-files: false
+          name: owned-portable-auth-restore-receipt
+          path: apps/scope-web/portable/restore-receipt.json
           retention-days: 7
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

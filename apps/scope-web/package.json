@@ -12,13 +12,17 @@
     "dev": "vite --host 127.0.0.1",
     "preview": "vite preview --host 127.0.0.1",
     "build:test": "vite build --config tests/browser/vite.config.mjs",
-    "rehearse": "node tools/rehearsal.mjs"
+    "rehearse": "node tools/rehearsal.mjs",
+    "test:portable": "node --test --test-concurrency=1 portable/tests/*.test.mjs",
+    "test:portable:owned": "node portable/tools/owned-test.mjs test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
     "@netlify/database": "2.0.3",
     "@netlify/functions": "6.1.1",
     "@netlify/identity": "2.0.1",
+    "better-auth": "1.7.18",
+    "kysely": "0.29.8",
     "pg": "8.23.1"
   },
   "devDependencies": {
