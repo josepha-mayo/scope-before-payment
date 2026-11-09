@@ -13,6 +13,23 @@ async function downloadRecord(page){const pending=page.waitForEvent('download');
 async function downloadReadable(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download readable record',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),html:await require('node:fs/promises').readFile(await file.path(),'utf8')};}
 async function downloadAccount(page){const pending=page.waitForEvent('download');await page.getByRole('button',{name:'Download account data',exact:true}).click();const file=await pending;return {name:file.suggestedFilename(),record:JSON.parse(await require('node:fs/promises').readFile(await file.path(),'utf8'))};}
 
+test('saved agreement overview follows the reviewed revision without treating acceptance as payment',async({browser},testInfo)=>{
+ const f=await fixture(browser,{checkout:true});try{
+  const creator=await f.page('creator');const id=await create(creator);
+  const overview=creator.getByRole('complementary',{name:'Saved agreement overview',exact:true});
+  await expect(overview).toContainText('No published offer');await fill(creator);await publish(creator,1);
+  await expect(overview).toContainText('Revision 1 · USD 145.00');await expect(overview).toContainText('Awaiting buyer review');
+  const invite=new URL(await creator.getByLabel('Private review link').inputValue()).pathname;
+  const buyer=await f.page('buyer',invite);await buyer.getByRole('button',{name:'Join this review',exact:true}).click();await changes(buyer);
+  await creator.getByRole('button',{name:'Refresh saved offer',exact:true}).click();await expect(overview).toContainText('Changes requested');
+  await creator.getByLabel('Revision allowance',{exact:true}).fill('Three rounds.');await creator.getByLabel('I reviewed the buyer’s open request. Publish this revision as my response.',{exact:true}).check();await publish(creator,2);
+  await buyer.getByRole('button',{name:'Refresh saved offer',exact:true}).click();const buyerOverview=buyer.getByRole('complementary',{name:'Saved agreement overview',exact:true});await expect(buyerOverview).toContainText('Revision 2 · USD 145.00');await expect(buyerOverview).toContainText('Awaiting buyer review');
+  await accept(buyer);await expect(buyerOverview).toContainText('Revision 2 accepted');await expect(buyerOverview).toContainText('Separate confirmation below');expect(f.app.checkoutCounts).toEqual({create:0,check:0,capture:0});
+  await buyer.screenshot({path:testInfo.outputPath('agreement-overview-desktop.png'),fullPage:false});
+  await buyer.setViewportSize({width:390,height:844});await expect(buyerOverview).toBeVisible();expect(await buyer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await buyer.screenshot({path:testInfo.outputPath('agreement-overview-mobile.png'),fullPage:false});expect(f.external).toEqual([]);
+ }finally{await f.close();}
+});
+
 test('payment preset explains unavailable actions and preserves existing terms when the price changes',async({browser})=>{
  const f=await fixture(browser,{checkout:true});try{
   const page=await f.page('creator');await create(page);const preset=page.getByRole('button',{name:'Use full payment before work',exact:true}),price=page.getByLabel('All-in price (USD)',{exact:true}),terms=page.getByLabel('Payment timing and other terms',{exact:true}),help=page.locator('#scope-payment-preset-help');
