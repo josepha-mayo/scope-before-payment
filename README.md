@@ -25,22 +25,26 @@ replies. Separate dated screenshots show a retained live Claude result and an
 original historical sandbox order response. Real capture and registered signed
 delivery remain unverified. See the [recording and edit notes](docs/REVIEW_CUT.md).
 
-[Hosted workspace](https://scope-before-payment.netlify.app) — sign in and use
-invented conversations. Identity, PostgreSQL persistence and Claude review are
-integrated. Hosted PayPal checkout is currently inactive; a real hosted sandbox
+[Hosted workspace](https://scope-before-payment.onrender.com) — sign in with
+GitHub and use invented conversations. The portable Node.js release runs on
+free Render with PostgreSQL on Neon. New commissions, reviewed publication and
+NVIDIA review are active; retained Claude reviews remain readable. A free-host
+cold start can take 50 seconds or more. Hosted PayPal checkout is inactive; a real hosted sandbox
 capture and registered webhook delivery have not been demonstrated.
+See the [dated native release evidence and limitations](docs/NATIVE_RELEASE_20261109.md).
 
 The source also includes a private [account data copy](docs/ACCOUNT_DATA_COPY.md)
-with older saved conversations and paginated history. That addition is not yet
-deployed: the hosted release remains at `4de65f7` while credits are conserved.
+with older saved conversations and paginated history. These source features are
+included in the current portable deployment; the old Netlify source is private
+after the verified database cutover.
 The source dashboard also [pages through workspace and invitation lists](docs/COLLECTION_PAGES.md)
 so memberships beyond the first 100 remain reachable.
 It also provides [read-only revision history and comparisons](docs/REVISION_REVIEW.md)
 before acceptance, including price, use-permission and source-only changes.
 The saved agreement overview distinguishes the current revision, buyer agreement
-and separate payment confirmation; these source improvements are not yet deployed.
+and separate payment confirmation.
 Creators can also [revoke an unused invitation](docs/INVITATION_REVOCATION.md)
-permanently before the buyer joins. This source feature is not yet deployed.
+permanently before the buyer joins.
 
 For a portable manual-offer preview, install Node.js 24 and run from this checkout:
 
@@ -84,14 +88,18 @@ See [rehearsal details](docs/LOCAL_REHEARSAL.md).
 
 ## The hosted product
 
-- Private workspaces use Netlify Identity and server-checked membership.
-- AI review uses Claude Haiku 5.5 through Netlify AI Gateway, with exact source
-  citations, separate human review and manual pricing.
+- Private workspaces use Better Auth GitHub sessions and server-checked membership
+  on the portable host. The original Netlify adapter remains in the source.
+- New AI review uses NVIDIA Nemotron 3.5 Lightning with source citations, separate
+  review and manual pricing. Historical Claude Haiku 5.5 reviews retain their
+  original request/validator and provider label. Valid structure does not prove
+  factual completeness: check exclusions against the complete conversation.
 - A buyer change request blocks acceptance until an explicitly linked response
   is published. Any new revision needs fresh acceptance.
 - PayPal Orders/OAuth adapters retain dispatch claims and sanitized observations.
-  A signed webhook receiver handles later payment updates. Notifications cannot
-  themselves grant capture authority.
+  Signed webhook verification is implemented, but the portable payment provider
+  and receiver remain inactive pending actual buyer/capture/delivery qualification.
+  Notifications cannot themselves grant capture authority.
 - Unknown actions recover through saved-status reads rather than automatic POST
   retries. Recovery mode blocks writes independently of restored database state.
 - Members can download private JSON or readable, printable HTML records. These
