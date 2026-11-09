@@ -1,6 +1,40 @@
 # Record an owned review cut
 
-## Published prototype edit
+## Revised published demo — November 9
+
+[Watch the revised 2:32 prototype](https://www.youtube.com/watch?v=89WKFiUpklM).
+The [existing Devpost entry](https://devpost.com/software/scope-before-payment)
+uses this replacement video. The original November 8 video remains an archive.
+
+The revised cut uses Joseph's own voice, cloned locally with his explicit consent
+from his recording using Chatterbox Nano. The model's built-in watermark remains;
+the original recordings, reference audio and local runtime are private. It has
+focused, readable UI views, dated provider evidence, burned captions and an
+uploaded English caption track. No music is used. The edited MP4 is 1920×1080,
+H.264/AAC, 152.033 seconds; SHA256:
+`eedca1d69c5696700859bc9599a954714b35019a56d257be6caf6a0e80c82959`.
+The reviewed captions are retained in [the English SRT](demo/scope-demo-20261109.en.srt).
+
+The actual UI/API/PostgreSQL recording ran at commit
+`afdc7e8e68526a6e2d068d841924080584d3b2f2`, tree
+`1f9b4945749bf1d78e32d9fa2103409dd49e24ee`, in
+[owned recording run 42593201154](https://github.com/josepha-mayo/scope-before-payment/actions/runs/42593201154).
+Only the recorder differs from application main `81f7aee`: the application code
+is identical. The new overview and visual improvements passed all four checks
+on [that main](https://github.com/josepha-mayo/scope-before-payment/actions/runs/42591951280).
+The recording retains focused screenshots with hashes and uses one authored
+create/check/capture sequence, saved-status recovery and zero external requests.
+
+The retained real Claude result was generated November 7 and its citations were
+read again November 9 without new inference. The original PayPal response from
+November 5 was read November 8 and shows an earlier USD120 order awaiting payer
+action. It is not capture, a current-status query or payment for the authored
+USD210 example. Authored accounts, AI replay and PayPal responses stay visibly
+labeled. Real capture, registered signed delivery and independent buyer
+qualification remain unfinished. The hosted release remains older than this
+source while credits are conserved; hosted checkout is inactive.
+
+## Original published prototype edit — archive
 
 [Watch the public narrated prototype](https://www.youtube.com/watch?v=3WPUbg7cLTg)
 (2:53), published November 8, 2026. It combines the owned workflow below with
