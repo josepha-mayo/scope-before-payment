@@ -31,7 +31,8 @@ test('restricted financial roles run one authored native checkout and signed del
   await verifyRuntimeRole(c,{write:true,checkout:true,webhook:true});
   await assert.rejects(verifyRuntimeRole(c,{write:true,checkout:true}),/too_broad/);
   await assert.rejects(verifyRuntimeRole(c,{write:true,webhook:true}),/too_broad/);
-  const scoped={async connect(){return {release(){},query(sql,args){if(sql.startsWith('BEGIN'))return c.query('SAVEPOINT app_action');if(sql==='COMMIT')return c.query('RELEASE SAVEPOINT app_action');if(sql==='ROLLBACK')return c.query('ROLLBACK TO SAVEPOINT app_action');return c.query(sql,args);}};}};
+  let sqlFailure=null;
+  const scoped={async connect(){return {release(){},async query(sql,args){try{if(sql.startsWith('BEGIN'))return await c.query('SAVEPOINT app_action');if(sql==='COMMIT')return await c.query('RELEASE SAVEPOINT app_action');if(sql==='ROLLBACK')return await c.query('ROLLBACK TO SAVEPOINT app_action');return await c.query(sql,args);}catch(error){sqlFailure={code:error.code,operation:/^(INSERT INTO|UPDATE|SELECT)\s+[A-Za-z0-9_.]+/.exec(sql)?.[0]??'bounded-query'};throw error;}}};}};
   const merchantId=randomUUID(),buyerId=randomUUID(),origin='https://scope-owned-native.example';
   const person=id=>({id,email:id===buyerId?'owned-paypal-buyer@invented.example':'owned-creator@invented.example',emailVerified:true,confirmedAt:'2026-11-07T00:00:00Z'});
   const creator=createWorkspaceStore({pool:scoped,getPrincipal:async()=>person(merchantId)});
@@ -51,7 +52,7 @@ test('restricted financial roles run one authored native checkout and signed del
   await buyer.accept(made.workspaceId,{requestId:randomUUID(),revision:q.revision,quoteBinding:q.binding,confirmation:'accept-exact-published-offer'});
   assert.equal(calls.length,0);
   const created=await buyer.startCheckout(made.workspaceId,{requestId:randomUUID(),revision:q.revision,quoteBinding:q.binding,confirmation:'create-sandbox-checkout-for-this-offer'});
-  assert.equal(created.checkout.state,'awaiting_approval');
+  assert.equal(created.checkout.state,'awaiting_approval',JSON.stringify({sqlFailure,authoredProviderCalls:calls.length}));
   const checked=await buyer.checkCheckout(made.workspaceId,{requestId:randomUUID(),checkoutId:created.checkout.id,confirmation:'check-this-sandbox-order'});
   assert.equal(checked.canCapture,true);
   const done=await buyer.captureCheckout(made.workspaceId,{requestId:randomUUID(),checkoutId:created.checkout.id,approvalId:checked.checkout.approvalId,confirmation:'capture-this-exact-approved-sandbox-order'});
