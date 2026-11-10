@@ -10,10 +10,12 @@ import {installOAuthFetchGuard} from './oauth-http.mjs';
 import {verifyRuntimeRole} from './permissions.mjs';
 import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
 import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
+import {createPortablePayments} from './payments.mjs';
 import {createAuthSignalWriter} from './auth-signals.mjs';
 
 // Read-only remains the default. Writes require explicit operator configuration,
-// a cutover receipt and the verified narrow SQL grants; PayPal stays unconstructed.
+// a cutover receipt and verified narrow SQL grants. Payment/ingress stay off
+// unless separately enabled and qualified against the current native identity.
 const appTables=['workspaces','sources','quotes','acceptances','operations','invitations','invitation_revocations','change_requests','change_responses','change_withdrawals','ai_claims','ai_receipts','checkout_attempts','checkout_calls','checkout_receipts','paypal_provider_calls','paypal_oauth_claims','paypal_oauth_receipts','paypal_token_invalidations','paypal_webhook_events','paypal_webhook_deliveries','paypal_webhook_conflicts'];
 const identityTables=['users','accounts','sessions','verifications','rate_limits','actor_links'];
 
@@ -44,14 +46,16 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
   try{
     await verifyPortableBuild(staticDirectory);phase='schema';
     await verifyMigratedSchema(pool,configuration);
-    await verifyRuntimeRole(pool,{write:configuration.mode==='write',ai:configuration.ai==='nvidia',enrollment:configuration.enrollment,paypalIdentity:configuration.auth.paypal!==undefined});
+    await verifyRuntimeRole(pool,{write:configuration.mode==='write',ai:configuration.ai==='nvidia',enrollment:configuration.enrollment,paypalIdentity:configuration.auth.paypal!==undefined,checkout:configuration.checkout,webhook:configuration.webhook});
     releaseTransport=installOAuthFetchGuard();phase='listen';
     const recovery=createRecoveryPolicy({read:key=>env[key]}),writable=()=>configuration.mode==='write'&&recovery.writable();
     const canEnroll=()=>writable()&&configuration.enrollment;
     const draftProvider=configuration.ai==='nvidia'?guardDraftProvider(createNvidiaDraftProvider({loadKey:async()=>env.SCOPE_NVIDIA_API_KEY,available:writable}),recovery):undefined;
-    const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:false,paypalSignInEnabled:configuration.auth.paypal!==undefined,registrationEnabled:canEnroll()});
-    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider,authSignal:createAuthSignalWriter()});
-    server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,
+    phase='payments';
+    const payments=await createPortablePayments({pool,origin:configuration.auth.origin,checkout:configuration.checkout,webhook:configuration.webhook,read:key=>env[key],canWrite:writable,recovery,report});
+    const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:payments.checkoutProvider?.available()===true,paypalSignInEnabled:configuration.auth.paypal!==undefined,webhookEnabled:configuration.webhook&&writable(),registrationEnabled:canEnroll()});
+    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider,checkoutProvider:payments.checkoutProvider,authSignal:createAuthSignalWriter()});
+    phase='listen';server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,webhook:payments.webhook,
       async staticResponse(request){
         const url=new URL(request.url);if(url.pathname!=='/healthz')return null;
         const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};

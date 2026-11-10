@@ -9,13 +9,15 @@ const uuid=v=>typeof v==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab]
 const account=v=>typeof v==='string'&&/^[2-9A-HJ-NP-Z]{13}$/.test(v);
 // An explicit exact-quote sandbox profile is an operator configuration, not a
 // browser flag. No default merchant, payer, credential or admission is invented.
-export function createPaypalProvider({getPool,read=runtimeEnv,fetch:request=globalThis.fetch}={}){
+export function createPaypalProvider({getPool,read=runtimeEnv,fetch:request=globalThis.fetch,origin='https://scope-before-payment.netlify.app'}={}){
+  let expectedOrigin;try{expectedOrigin=new URL(origin);}catch{throw Error('paypal_origin_invalid');}
+  if(expectedOrigin.origin!==origin||expectedOrigin.protocol!=='https:'||expectedOrigin.username||expectedOrigin.password||expectedOrigin.pathname!=='/'||expectedOrigin.search||expectedOrigin.hash)throw Error('paypal_origin_invalid');
   const tokens=createPaypalTokens({getPool,fetch:request});
   function settings(){
     try{
       if(read('SCOPE_PAYPAL_SANDBOX_ENABLED')!=='true')return null;
       const profile=JSON.parse(read('SCOPE_PAYPAL_SANDBOX_PROFILE'));
-      if(!exact(profile,['profile','merchantActorId','buyerActorId','workspaceId','quoteBinding','merchantId','payerId','origin'])||!['merchantActorId','buyerActorId','workspaceId'].every(k=>uuid(profile[k]))||profile.merchantActorId===profile.buyerActorId||!/^[a-z0-9-]{1,80}$/.test(profile.profile)||!/^[a-f0-9]{64}$/.test(profile.quoteBinding)||!account(profile.merchantId)||!account(profile.payerId)||profile.merchantId===profile.payerId||profile.origin!=='https://scope-before-payment.netlify.app')return null;
+      if(!exact(profile,['profile','merchantActorId','buyerActorId','workspaceId','quoteBinding','merchantId','payerId','origin'])||!['merchantActorId','buyerActorId','workspaceId'].every(k=>uuid(profile[k]))||profile.merchantActorId===profile.buyerActorId||!/^[a-z0-9-]{1,80}$/.test(profile.profile)||!/^[a-f0-9]{64}$/.test(profile.quoteBinding)||!account(profile.merchantId)||!account(profile.payerId)||profile.merchantId===profile.payerId||profile.origin!==expectedOrigin.origin)return null;
       const clientId=read('PAYPAL_SANDBOX_CLIENT_ID'),clientSecret=read('PAYPAL_SANDBOX_CLIENT_SECRET'),encoded=read('SCOPE_PAYPAL_TOKEN_KEY');
       if(typeof clientId!=='string'||!/^[\x21-\x7e]{1,512}$/.test(clientId)||clientId.includes(':')||typeof clientSecret!=='string'||!/^[\x21-\x7e]{16,512}$/.test(clientSecret)||typeof encoded!=='string')return null;
       const key=Buffer.from(encoded,'base64');if(key.length!==32||key.toString('base64')!==encoded)return null;

@@ -56,7 +56,7 @@ capture, or registered signed webhook delivery.
 - New subjects can receive new random actors only when the server-owned write
   policy permits enrollment. Read-only qualification cannot enroll accounts.
 - Account linking and password sign-in are disabled. The boundary exposes only
-  GitHub sign-in/callback and explicit sign-out; session, token, account-linking
+  enabled-provider sign-in/callback and explicit sign-out; session, token, account-linking
   and user-mutation SDK endpoints are not public routes. Scope's existing `/me`
   endpoint returns the verified application identity without SDK session data.
 - Every private request reads the current session from Postgres. Cookie caching
@@ -78,8 +78,9 @@ capture, or registered signed webhook delivery.
   cannot authorize private reads even when the signed cookie and restored DB
   session are otherwise valid. This does not revoke upstream GitHub tokens.
 - Fresh OAuth drops a browser's old session cookie, retaining only SDK state.
-  One-time state is consumed by the SDK. Provider scopes are limited to
-  `user:email`; no repository permission is requested.
+  One-time state is consumed by the SDK. GitHub requests `user:email`, with no
+  repository permission. PayPal uses the fixed documented sandbox connect URL
+  with `openid profile email https://uri.paypal.com/services/paypalattributes`.
 - The fixed HTTPS origin is server configuration. Forwarded host and client IP
   headers are discarded. Rate limits currently use the actual socket peer;
   behind a proxy this may conservatively combine users. Qualify the host's

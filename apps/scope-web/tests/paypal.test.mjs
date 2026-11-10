@@ -38,3 +38,12 @@ test('disabled/malformed operator profiles are inert and exact quote routing can
   await assert.rejects(enabled.create({callId:randomUUID(),attempt:a,descriptor:{...descriptor(a,'create'),url:'https://evil.example'},signal:new AbortController().signal,authorize:()=>true}),fixed);assert.equal(io,0);
   env.SCOPE_PAYPAL_SANDBOX_PROFILE=JSON.stringify({...p,buyerActorId:p.merchantActorId});assert.equal(enabled.available(),false);assert.equal(io,0);
 });
+test('a native provider requires its server-owned origin without adopting a legacy profile',()=>{
+  const a=inventedCheckout(),origin='https://scope-owned-native.example';let io=0;
+  const p={...a.configuration,workspaceId:a.material.workspaceId,merchantActorId:a.material.merchantActorId,buyerActorId:a.material.buyerActorId,quoteBinding:a.material.quote.binding};
+  const env={SCOPE_PAYPAL_SANDBOX_ENABLED:'true',SCOPE_PAYPAL_SANDBOX_PROFILE:JSON.stringify(p),PAYPAL_SANDBOX_CLIENT_ID:'AUTHORED_CLIENT',PAYPAL_SANDBOX_CLIENT_SECRET:'AUTHORED_SECRET_ONLY_12345',SCOPE_PAYPAL_TOKEN_KEY:randomBytes(32).toString('base64')};
+  const provider=createPaypalProvider({origin,getPool:()=>{io++;throw Error();},fetch:async()=>{io++;throw Error();},read:k=>env[k]});
+  assert.equal(provider.available(),false);env.SCOPE_PAYPAL_SANDBOX_PROFILE=JSON.stringify({...p,origin});assert.equal(provider.available(),true);
+  assert.equal(provider.context(a.material).origin,origin);assert.equal(io,0);
+  for(const bad of ['http://scope-owned-native.example','https://u:p@scope-owned-native.example','https://scope-owned-native.example/path','https://scope-owned-native.example?x=1'])assert.throws(()=>createPaypalProvider({origin:bad,getPool:()=>{io++;},fetch:async()=>{io++;}}),/origin_invalid/);
+});
