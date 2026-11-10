@@ -10,6 +10,7 @@ import {installOAuthFetchGuard} from './oauth-http.mjs';
 import {verifyRuntimeRole} from './permissions.mjs';
 import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
 import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
+import {createAuthSignalWriter} from './auth-signals.mjs';
 
 // Read-only remains the default. Writes require explicit operator configuration,
 // a cutover receipt and the verified narrow SQL grants; PayPal stays unconstructed.
@@ -49,7 +50,7 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
     const canEnroll=()=>writable()&&configuration.enrollment;
     const draftProvider=configuration.ai==='nvidia'?guardDraftProvider(createNvidiaDraftProvider({loadKey:async()=>env.SCOPE_NVIDIA_API_KEY,available:writable}),recovery):undefined;
     const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:false,paypalSignInEnabled:configuration.auth.paypal!==undefined,registrationEnabled:canEnroll()});
-    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider});
+    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider,authSignal:createAuthSignalWriter()});
     server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,
       async staticResponse(request){
         const url=new URL(request.url);if(url.pathname!=='/healthz')return null;

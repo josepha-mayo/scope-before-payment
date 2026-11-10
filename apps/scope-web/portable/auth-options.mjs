@@ -1,5 +1,6 @@
 import {PostgresDialect} from 'kysely';
-import {bindPayPalUserInfo} from './paypal-identity.mjs';
+import {bindPayPalUserInfo,validPayPalSubject,validPayPalPayer} from './paypal-identity.mjs';
+import {safeSdkLogger} from './auth-signals.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // PayPal's documented button flow requires explicit OIDC scopes. The pinned
@@ -31,7 +32,7 @@ export function authConfiguration(env){
   return Object.freeze({origin:origin.origin,secret,epoch,clientId,clientSecret,...(paypal?{paypal}:{})});
 }
 
-export function authOptions({pool,configuration,canEnroll=()=>false}){
+export function authOptions({pool,configuration,canEnroll=()=>false,authSignal=()=>{}}){
   if(!pool||typeof pool.query!=='function')throw Error('auth_pool_required');
   // Revalidate even when callers construct the configuration themselves.
   const c=authConfiguration({SCOPE_PUBLIC_ORIGIN:configuration?.origin,SCOPE_AUTH_SECRET:configuration?.secret,SCOPE_AUTH_SESSION_EPOCH:configuration?.epoch,SCOPE_GITHUB_CLIENT_ID:configuration?.clientId,SCOPE_GITHUB_CLIENT_SECRET:configuration?.clientSecret,SCOPE_PAYPAL_SIGNIN_ENABLED:configuration?.paypal?'true':'false',PAYPAL_SANDBOX_CLIENT_ID:configuration?.paypal?.clientId,PAYPAL_SANDBOX_CLIENT_SECRET:configuration?.paypal?.clientSecret});
@@ -42,7 +43,11 @@ export function authOptions({pool,configuration,canEnroll=()=>false}){
     emailAndPassword:{enabled:false},
     socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true},
       ...(c.paypal?{paypal:{...c.paypal,environment:'sandbox',authorizationEndpoint:paypalAuthorizationEndpoint,requestShippingAddress:false,overrideUserInfoOnSignIn:true,
-        mapProfileToUser:async profile=>({emailVerified:await bindPayPalUserInfo({pool,profile,canEnroll})})}}:{})},
+        mapProfileToUser:async profile=>{
+          const emailVerified=await bindPayPalUserInfo({pool,profile,canEnroll});
+          try{authSignal({code:emailVerified?'paypal_identity_proof_bound':profile?.email_verified!==true?'paypal_email_proof_missing':!validPayPalSubject(profile?.user_id)?'paypal_subject_proof_missing':!validPayPalPayer(profile?.payer_id)?'paypal_payer_proof_missing':'paypal_identity_binding_rejected'});}catch{}
+          return {emailVerified};
+        }}}:{})},
     user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'},
       async validateUserInfo({user,source}){
         const provider=source.oauth?.providerId;
@@ -67,7 +72,7 @@ export function authOptions({pool,configuration,canEnroll=()=>false}){
       defaultCookieAttributes:{httpOnly:true,secure:true,sameSite:'lax',path:'/'},
       ipAddress:{ipAddressHeaders:['x-scope-transport-ip']},database:{generateId:'uuid'}},
     databaseHooks:{session:{create:{before:async session=>({data:{...session,scopeEpoch:c.epoch}})}}},
-    logger:{disabled:true},telemetry:{enabled:false},
+    logger:safeSdkLogger(authSignal),telemetry:{enabled:false},
     onAPIError:{errorURL:c.origin+'/?signin=failed'},
   };
 }

@@ -1,6 +1,7 @@
 import {isIP} from 'node:net';
 import J from '../../../experiments/scope-to-quote/strict-json.js';
 import {withOAuthDeadline} from './oauth-http.mjs';
+import {callbackSignal} from './auth-signals.mjs';
 
 const security={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'"};
 const failure=(status,code)=>Response.json({error:{code}},{status,headers:security});
@@ -21,7 +22,7 @@ async function boundedJson(request,timeoutMs){
 
 // Public SDK surface is deliberately limited. In particular get-session,
 // account/token APIs, user mutation and account linking are not HTTP routes.
-export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false,canWrite=canEnroll,paypalEnabled=false}){
+export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false,canWrite=canEnroll,paypalEnabled=false,authSignal=()=>{}}){
   if(new URL(origin).origin!==origin||!origin.startsWith('https://')||!Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000||typeof paypalEnabled!=='boolean')throw Error('auth_boundary_configuration');
   return async function handle(request,transport){
     const url=new URL(request.url);
@@ -60,6 +61,7 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=
     const body=signIn?{provider:input.provider,callbackURL:origin+'/?signin=complete',errorCallbackURL:origin+'/?signin=failed',disableRedirect:true}:{};
     try{
       const response=await withOAuthDeadline(request.signal,()=>auth.handler(new Request(url,{method:request.method,headers,signal:request.signal,...(!callback?{body:JSON.stringify(body)}:{})})));
+      if(callback)try{authSignal(callbackSignal(response,origin));}catch{}
       const output=new Headers(response.headers);for(const [key,value]of Object.entries(security))output.set(key,value);
       // The SDK emits X-Retry-After. Also expose the standard header so a
       // client can wait without guessing or replaying a sign-in immediately.
