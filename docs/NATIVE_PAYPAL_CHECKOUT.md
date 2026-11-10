@@ -27,3 +27,8 @@ Owned tests run an actual restricted-role checkout journal and signed webhook
 in PostgreSQL using authored provider replies. Those tests are not a real
 PayPal payment. Do not register or claim native delivery until the deployed
 receiver and the real registered event have been separately verified.
+
+The controlled native qualification subsequently passed on November 10:
+[real USD5 buyer acceptance, capture and registered signed delivery](REAL_PAYPAL_SANDBOX_20261110.md).
+This enables only the pinned qualified offer, not arbitrary commissions or live
+payments. No earlier external order was adopted, replayed or declared resolved.

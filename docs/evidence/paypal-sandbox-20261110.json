@@ -1,0 +1,167 @@
+{
+  "kind": "scope_real_native_paypal_end_to_end_v1",
+  "at": "2026-11-10T22:09:05.756Z",
+  "sourceCommit": "d78c6424b5517220920ea87516b49ac4cf8b61af",
+  "sourceTree": "fee25fc7e813cf97237d3ce3ee7a267d2032a03d",
+  "ciRun": 42909614440,
+  "ciJobs": [
+    {
+      "name": "public-source-secret-scan",
+      "conclusion": "success"
+    },
+    {
+      "name": "hosted-storage-verification",
+      "conclusion": "success"
+    },
+    {
+      "name": "windows-ai-verification",
+      "conclusion": "success"
+    },
+    {
+      "name": "linux-verification",
+      "conclusion": "success"
+    }
+  ],
+  "renderDeploy": "dep-dbpp94qfngtc7381pij0",
+  "origin": "https://scope-before-payment.onrender.com",
+  "environment": "sandbox",
+  "realProviderReplies": true,
+  "authoredProviderReplies": false,
+  "realFundsUsed": false,
+  "buyerSdkLoginVerified": true,
+  "distinctBuyerActor": true,
+  "immutablePayerVerified": true,
+  "exactRevisionAccepted": true,
+  "quoteBinding": "8bf256e801b70b141d5bc11a849470d569268eae76f1b5acf41661feaa8e41dd",
+  "checkoutBinding": "36e0d62ea2d4aff3825b01399a54e8fb54a89599efc0334eb7b65f0375979514",
+  "revision": 1,
+  "totalCents": 500,
+  "currency": "USD",
+  "orderId": "9C053012RL2083847",
+  "captureId": "13R49860CA542974F",
+  "oneCreateOneCheckOneCapture": true,
+  "paymentJournal": [
+    {
+      "id": "2a656afc-1120-4902-81a7-b9a7ae4b4d3d",
+      "kind": "create",
+      "ordinal": 1,
+      "sequence": 1,
+      "state": "awaiting_approval",
+      "order_id": "9C053012RL2083847",
+      "capture_id": null,
+      "reason": null,
+      "http_status": 200,
+      "provider_debug_id": "f381591113adf",
+      "response_hash": "8bfd5f8b28b275f594b05f4ba06d7172b5ec5165f748b19089103354ae9a5ef7",
+      "created_at": "2026-11-10T22:04:21.004Z"
+    },
+    {
+      "id": "bd02762b-16c6-4369-a258-75a83dae07a6",
+      "kind": "check",
+      "ordinal": 1,
+      "sequence": 2,
+      "state": "approved",
+      "order_id": "9C053012RL2083847",
+      "capture_id": null,
+      "reason": null,
+      "http_status": 200,
+      "provider_debug_id": "ca5885d064c72",
+      "response_hash": "b8ea0dad80bb3362f8f0881f6e207a9436debf9ac8cee197d73f03267a4b24d4",
+      "created_at": "2026-11-10T22:06:15.906Z"
+    },
+    {
+      "id": "eafb1743-6a08-48c8-b6da-9ef341a35b7f",
+      "kind": "capture",
+      "ordinal": 1,
+      "sequence": 3,
+      "state": "completed",
+      "order_id": "9C053012RL2083847",
+      "capture_id": "13R49860CA542974F",
+      "reason": null,
+      "http_status": 201,
+      "provider_debug_id": "ca5885d577bb6",
+      "response_hash": "722b328ee3c604164dc8846d7be9f872d9d1d95b89457dd74196e0aedb2b73a6",
+      "created_at": "2026-11-10T22:06:28.928Z"
+    }
+  ],
+  "merchantOAuth": [
+    {
+      "state": "validated",
+      "http_status": 200,
+      "provider_debug_id": "f12269287acf2",
+      "response_hash": "e6b77973d932e5ff9e02edd5e9ab06ea29ccf4a2cc1f06afaff7687977d42fc0"
+    }
+  ],
+  "registeredCaptureNotification": {
+    "webhook_id": "0DY78549C8899564V",
+    "event_id": "WH-1L592559RK820635V-1WD113656J635633Y",
+    "event_type": "PAYMENT.CAPTURE.COMPLETED",
+    "order_id": "9C053012RL2083847",
+    "capture_id": "13R49860CA542974F",
+    "amount_cents": 500,
+    "currency": "USD",
+    "payload_hash": "913ad806f7ee9cba9b948429751d94ba45261b12933be9435ca15762020d4550",
+    "certificate_hash": "46c0554d779927cdcacb36b45bd0ea1ab813ed4bec679160a00c7c52e4185481",
+    "received_at": "2026-11-10T22:06:46.306Z"
+  },
+  "webhookEvents": [
+    {
+      "webhook_id": "0DY78549C8899564V",
+      "event_id": "WH-73T29639SA431482S-3FH63860584045932",
+      "event_type": "CHECKOUT.ORDER.APPROVED",
+      "order_id": "9C053012RL2083847",
+      "capture_id": null,
+      "amount_cents": null,
+      "currency": null,
+      "payload_hash": "deaa80cb0a5eac8a14a9b7e053268cfb3497f0d044b6be25a49f90ea5b623dcf",
+      "certificate_hash": "46c0554d779927cdcacb36b45bd0ea1ab813ed4bec679160a00c7c52e4185481",
+      "received_at": "2026-11-10T22:06:08.234Z"
+    },
+    {
+      "webhook_id": "0DY78549C8899564V",
+      "event_id": "WH-1L592559RK820635V-1WD113656J635633Y",
+      "event_type": "PAYMENT.CAPTURE.COMPLETED",
+      "order_id": "9C053012RL2083847",
+      "capture_id": "13R49860CA542974F",
+      "amount_cents": 500,
+      "currency": "USD",
+      "payload_hash": "913ad806f7ee9cba9b948429751d94ba45261b12933be9435ca15762020d4550",
+      "certificate_hash": "46c0554d779927cdcacb36b45bd0ea1ab813ed4bec679160a00c7c52e4185481",
+      "received_at": "2026-11-10T22:06:46.306Z"
+    }
+  ],
+  "webhookDeliveries": [
+    {
+      "webhook_id": "0DY78549C8899564V",
+      "transmission_id": "eaef1682-dd52-11f1-8118-65dd9120a2b6",
+      "event_id": "WH-73T29639SA431482S-3FH63860584045932",
+      "received_at": "2026-11-10T22:06:08.237Z"
+    },
+    {
+      "webhook_id": "0DY78549C8899564V",
+      "transmission_id": "03a75d6b-dd53-11f1-ae6a-031d6a602788",
+      "event_id": "WH-1L592559RK820635V-1WD113656J635633Y",
+      "received_at": "2026-11-10T22:06:46.309Z"
+    }
+  ],
+  "financialCounts": {
+    "checkout_attempts": 1,
+    "checkout_calls": 3,
+    "checkout_receipts": 3,
+    "paypal_provider_calls": 3,
+    "paypal_oauth_claims": 1,
+    "paypal_oauth_receipts": 1,
+    "paypal_token_invalidations": 0,
+    "paypal_webhook_events": 2,
+    "paypal_webhook_deliveries": 2,
+    "paypal_webhook_conflicts": 0
+  },
+  "conflicts": 0,
+  "actualRestrictedRoleQualified": true,
+  "olderExternalOrdersAdopted": false,
+  "olderExternalUncertaintyResolved": false,
+  "productionReadinessClaimed": false,
+  "independentHumanUsabilityTestClaimed": false,
+  "secretsLogged": false,
+  "scope": "One invented, qualified exact offer; no general live checkout authority."
+}

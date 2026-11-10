@@ -38,3 +38,8 @@ PKCE, token exchange, UserInfo transport and encrypted token storage stay intact
 Authored callback tests exercise this legacy response through the actual SDK,
 invitation, acceptance and immutable payment-profile checks. A real login must
 still be verified after deploying the checked correction.
+
+The checked correction was subsequently deployed and the real sandbox buyer
+signed in successfully, joined the intended invitation and accepted its exact
+revision. [Dated end-to-end qualification](REAL_PAYPAL_SANDBOX_20261110.md)
+records the resulting real sandbox capture and registered signed notification.
