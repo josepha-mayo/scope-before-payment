@@ -107,3 +107,18 @@ test('disabled provider, caller-supplied payer/scopes and unverified identity ca
  for(const body of [{provider:'paypal',payerId:payer()},{provider:'paypal',scopes:['address']},{provider:'paypal',callbackURL:'https://evil.example'},{provider:'paypal',idToken:{token:'owned'}}])assert.equal((await boundary(req('sign-in/social',body),{remoteAddress:'192.0.2.202'})).status,400);
  const r=await callback(await start(),{...profile(),email_verified:false});assert.equal(sessionCookie(r.response),undefined);
 });
+
+test('actual SQL retains bounded opaque ASCII identities and refuses controls, oversized values and legacy adoption',async()=>{
+ const c=await pool.connect();await c.query('BEGIN');
+ try{
+   await c.query('INSERT INTO scope_identity.paypal_payer_links(provider_subject,payer_id) VALUES($1,$2)',['x'.repeat(512),payer()]);
+   for(const value of ['', 'x'.repeat(513),'has space','has\ncontrol','nonascii-é']){
+     await c.query('SAVEPOINT invalid_identity');
+     await assert.rejects(c.query('INSERT INTO scope_identity.paypal_payer_links(provider_subject,payer_id) VALUES($1,$2)',[value,payer()]),e=>e.code==='23514');
+     await c.query('ROLLBACK TO SAVEPOINT invalid_identity');
+   }
+   await c.query('SAVEPOINT invalid_legacy');
+   await assert.rejects(c.query("INSERT INTO scope_identity.actor_links(provider,provider_subject,actor_id,created_via) VALUES('paypal-sandbox',$1,$2,'legacy-migration')",[subject(),randomUUID()]),e=>e.code==='23514');
+   await c.query('ROLLBACK TO SAVEPOINT invalid_legacy');
+ }finally{await c.query('ROLLBACK');c.release();}
+});
