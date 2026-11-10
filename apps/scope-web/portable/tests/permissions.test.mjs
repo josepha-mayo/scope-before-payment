@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,readdir} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import pg from 'pg';
 import {verifyRuntimeRole} from '../permissions.mjs';
@@ -15,8 +15,8 @@ const url=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing');
 assert.ok(['postgres:','postgresql:'].includes(url.protocol)&&['127.0.0.1','localhost'].includes(url.hostname)&&url.pathname==='/scope_test','Owned loopback database required');
 const pool=new pg.Pool({connectionString:url.href,max:1,connectionTimeoutMillis:3000});
 test.after(()=>pool.end());
-async function probe(groups,fn){
-  const c=await pool.connect();await c.query('BEGIN');
+async function probe(groups,fn,probePool=pool){
+  const c=await probePool.connect();await c.query('BEGIN');
   try{
     for(const name of ['reader-role.sql','commission-writer-role.sql','ai-writer-role.sql','enrollment-role.sql','paypal-identity-role.sql','checkout-writer-role.sql','webhook-writer-role.sql'])await c.query(await readFile(new URL('../sql/'+name,import.meta.url),'utf8'));
     await c.query('CREATE ROLE scope_permission_probe NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS');
@@ -26,7 +26,26 @@ async function probe(groups,fn){
 }
 const rejects=async(c,sql)=>{await c.query('SAVEPOINT denied');try{await assert.rejects(c.query(sql),e=>e.code==='42501');}finally{await c.query('ROLLBACK TO SAVEPOINT denied');}};
 
+async function ownedFinancialDatabase(){
+ // The shared hosted suite intentionally consumes global OAuth budgets. A new
+ // role qualification needs its own disposable database, never a journal reset
+ // or another fake credential to bypass those consumed budgets.
+ const name='scope_native_role_'+randomUUID().replaceAll('-','');
+ assert.match(name,/^scope_native_role_[a-f0-9]{32}$/);
+ const before=(await pool.query('SELECT count(*)::int AS n FROM scope_app.paypal_oauth_claims')).rows[0].n;
+ await pool.query('CREATE DATABASE "'+name+'"');
+ const target=new URL(url);target.pathname='/'+name;
+ const owned=new pg.Pool({connectionString:target.href,max:1,connectionTimeoutMillis:3000});
+ const close=async()=>{await owned.end();await pool.query('DROP DATABASE "'+name+'"');assert.equal((await pool.query('SELECT count(*)::int AS n FROM scope_app.paypal_oauth_claims')).rows[0].n,before,'Shared provider journals remain unchanged');};
+ try{
+  for(const file of (await readdir(new URL('../../netlify/database/migrations/',import.meta.url))).filter(x=>x.endsWith('.sql')).sort())await owned.query(await readFile(new URL('../../netlify/database/migrations/'+file,import.meta.url),'utf8'));
+  for(const file of ['001_better_auth.sql','002_actor_links.sql','003_paypal_sandbox_identity.sql'])await owned.query(await readFile(new URL('../migrations/'+file,import.meta.url),'utf8'));
+  return {pool:owned,close};
+ }catch(error){await close();throw error;}
+}
+
 test('restricted financial roles run one authored native checkout and signed delivery without timestamp, sequence or rewrite authority',async()=>{
+ const owned=await ownedFinancialDatabase();try{
  await probe(['scope_portable_commission_writer','scope_portable_checkout_writer','scope_portable_webhook_writer'],async c=>{
   await verifyRuntimeRole(c,{write:true,checkout:true,webhook:true});
   await assert.rejects(verifyRuntimeRole(c,{write:true,checkout:true}),/too_broad/);
@@ -64,7 +83,8 @@ test('restricted financial roles run one authored native checkout and signed del
   const delivered=await handler(signed.request(event,{origin}));assert.equal(delivered.status,200);assert.equal((await delivered.json()).received,true);
   assert.equal((await c.query('SELECT count(*)::int AS n FROM scope_app.paypal_webhook_deliveries WHERE event_id=$1',[event.id])).rows[0].n,1);
   for(const sql of ['INSERT INTO scope_app.checkout_attempts(created_at) VALUES(now())','INSERT INTO scope_app.paypal_oauth_claims(sequence) VALUES(99)','UPDATE scope_app.checkout_receipts SET reason=reason','DELETE FROM scope_app.paypal_webhook_events','TRUNCATE scope_app.paypal_oauth_receipts',"SELECT nextval('scope_app.paypal_oauth_claims_sequence_seq')"])await rejects(c,sql);
- });
+ },owned.pool);
+ }finally{await owned.close();}
 });
 
 test('sandbox identity grants permit only new subject/payer bindings and never financial or identity rewrites',async()=>{
