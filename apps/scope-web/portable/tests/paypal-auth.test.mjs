@@ -11,6 +11,7 @@ import {createRequestPrincipal,resolveActor} from '../principal.mjs';
 import {createApiHandler} from '../../server/api.mjs';
 import {createWorkspaceStore} from '../../server/workspaces.mjs';
 import {insertLegacyUser} from './legacy-user.mjs';
+import {verifyPaymentProfile} from '../payments.mjs';
 const url=new URL(process.env.SCOPE_TEST_DATABASE_URL||'http://missing');
 assert.ok(['postgres:','postgresql:'].includes(url.protocol)&&['127.0.0.1','localhost'].includes(url.hostname)&&url.pathname==='/scope_test','Owned loopback database required');
 const pool=new pg.Pool({connectionString:url.href,max:4,connectionTimeoutMillis:3000});
@@ -81,6 +82,10 @@ test('real SDK sandbox callback binds an opaque subject and payer, encrypts its 
  assert.equal((await post('/api/v1/invitations/'+made.workspaceId+'/join',{requestId:randomUUID(),confirmation:'join-this-invited-workspace'})).status,200);
  const accepted=await post('/api/v1/workspaces/'+made.workspaceId+'/accept',{requestId:randomUUID(),revision:q.revision,quoteBinding:q.binding,confirmation:'accept-exact-published-offer'});assert.equal(accepted.status,200);assert.equal((await accepted.json()).data.accepted,true);
  assert.equal((await merchant.read(made.workspaceId)).accepted,true);
+ const paymentProfile={workspaceId:made.workspaceId,merchantActorId:(await creatorPrincipal.getUser()).id,buyerActorId:user.id,quoteBinding:q.binding,payerId:info.payer_id};
+ await verifyPaymentProfile(pool,paymentProfile);
+ await assert.rejects(verifyPaymentProfile(pool,{...paymentProfile,payerId:payer()}),/identity_or_quote_unconfirmed/);
+ await assert.rejects(verifyPaymentProfile(pool,{...paymentProfile,quoteBinding:'f'.repeat(64)}),/identity_or_quote_unconfirmed/);
  assert.equal((await pool.query('SELECT 1 FROM scope_app.checkout_attempts WHERE workspace_id=$1',[made.workspaceId])).rowCount,0,'Joining and accepting issue no payment request');
  const replay=await boundary(new Request(f.callbackUrl,{headers:{cookie:f.cookie}}),f.peer);assert.equal(replay.status,302);assert.equal(sessionCookie(replay),undefined);
  assert.equal(await principal(cookie,{allowPaypal:()=>false}).getUser(),null,'Turning off this provider revokes application access');

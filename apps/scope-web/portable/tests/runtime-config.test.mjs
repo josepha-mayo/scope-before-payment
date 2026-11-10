@@ -33,3 +33,12 @@ test('sandbox buyer identity cannot start in read-only mode',()=>{
   assert.throws(()=>runtimeConfiguration(env),/activation_invalid/);
   const c=runtimeConfiguration({...env,SCOPE_PORTABLE_MODE:'write',SCOPE_PORTABLE_CUTOVER_RECEIPT:'a'.repeat(64)});assert.ok(c.auth.paypal);assert.equal(c.pool.ssl.rejectUnauthorized,true);
 });
+test('native checkout and signed ingress are explicit independent write capabilities',()=>{
+  const env=environment();assert.equal(runtimeConfiguration(env).checkout,false);assert.equal(runtimeConfiguration(env).webhook,false);
+  for(const extra of [{SCOPE_PAYPAL_SANDBOX_ENABLED:'true'},{SCOPE_PAYPAL_WEBHOOK_ENABLED:'true'},{SCOPE_PAYPAL_SANDBOX_ENABLED:'yes'},{SCOPE_PAYPAL_WEBHOOK_ENABLED:'live'}])assert.throws(()=>runtimeConfiguration({...env,...extra}),/activation_invalid/);
+  const base={...env,SCOPE_PORTABLE_MODE:'write',SCOPE_PORTABLE_CUTOVER_RECEIPT:'a'.repeat(64)};
+  assert.throws(()=>runtimeConfiguration({...base,SCOPE_PAYPAL_SANDBOX_ENABLED:'true'}),/activation_invalid/);
+  assert.equal(runtimeConfiguration({...base,SCOPE_PAYPAL_WEBHOOK_ENABLED:'true'}).webhook,true);
+  const configured=runtimeConfiguration({...base,SCOPE_PAYPAL_SIGNIN_ENABLED:'true',PAYPAL_SANDBOX_CLIENT_ID:randomBytes(24).toString('hex'),PAYPAL_SANDBOX_CLIENT_SECRET:randomBytes(24).toString('hex'),SCOPE_PAYPAL_SANDBOX_ENABLED:'true'});
+  assert.equal(configured.checkout,true);assert.equal(configured.webhook,false);
+});

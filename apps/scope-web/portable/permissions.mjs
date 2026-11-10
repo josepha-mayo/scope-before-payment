@@ -14,18 +14,32 @@ export const aiInserts=Object.freeze({
   ai_claims:['id','actor_id','request_id','workspace_id','source_version','source_binding','profile','model','request_json','request_hash'],
   ai_receipts:['claim_id','state','raw_text','raw_hash','code','usage'],
 });
+export const checkoutInserts=Object.freeze({
+  checkout_attempts:['id','workspace_id','revision','quote_binding','buyer_id','attempt','binding'],
+  checkout_calls:['id','checkout_id','buyer_id','request_id','kind','ordinal','descriptor','descriptor_hash','approval_id','sequence'],
+  checkout_receipts:['call_id','state','order_id','capture_id','approval_url','reason','http_status','response_hash','provider_debug_id'],
+  paypal_provider_calls:['call_id','credential_id'],
+  paypal_oauth_claims:['id','call_id','credential_id'],
+  paypal_oauth_receipts:['claim_id','state','token_cipher','key_id','expires_at','http_status','response_hash','provider_debug_id'],
+  paypal_token_invalidations:['claim_id','call_id','reason'],
+});
+export const webhookInserts=Object.freeze({
+  paypal_webhook_events:['webhook_id','event_id','payload_hash','issuer_merchant_id','event_type','occurred_at','order_id','capture_id','amount_cents','currency','certificate_hash'],
+  paypal_webhook_deliveries:['webhook_id','transmission_id','event_id','payload_hash','transmitted_at'],
+  paypal_webhook_conflicts:['webhook_id','transmission_id','event_id','payload_hash'],
+});
 const workspaceUpdates=['current_source_version','current_revision','buyer_id'];
 const actorInserts=['provider','provider_subject','actor_id','created_via'];
 const paypalIdentityInserts=Object.freeze(['provider_subject','payer_id']);
-for(const columns of [...Object.values(commissionInserts),...Object.values(aiInserts),workspaceUpdates,actorInserts])Object.freeze(columns);
+for(const columns of [...Object.values(commissionInserts),...Object.values(aiInserts),...Object.values(checkoutInserts),...Object.values(webhookInserts),workspaceUpdates,actorInserts])Object.freeze(columns);
 
 // Inspect column permissions as well as table grants, including every role the
 // login can SET ROLE to. NOINHERIT membership must not hide an escalation path.
-export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=false,paypalIdentity=false}={}){
-  if(ai&&!write||enrollment&&!write||paypalIdentity&&!write)throw Error('runtime_permissions_invalid');
+export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=false,paypalIdentity=false,checkout=false,webhook=false}={}){
+  if((ai||enrollment||paypalIdentity||checkout||webhook)&&!write)throw Error('runtime_permissions_invalid');
   const roles=(await pool.query("SELECT oid,rolname,rolname=current_user AS active,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE pg_has_role(current_user,oid,'SET')")).rows;
   if(!roles.length)throw Error('runtime_database_role_too_broad');
-  const insertAllowed=write?{...commissionInserts,...(ai?aiInserts:{})}:{};
+  const insertAllowed=write?{...commissionInserts,...(ai?aiInserts:{}),...(checkout?checkoutInserts:{}),...(webhook?webhookInserts:{})}:{};
   const authTables=new Set(['users','accounts','sessions','verifications','rate_limits']);let activeColumns;
   for(const role of roles){
     if(role.rolname.startsWith('pg_')||['rolsuper','rolcreaterole','rolcreatedb','rolreplication','rolbypassrls'].some(k=>role[k]!==false))throw Error('runtime_database_role_too_broad');

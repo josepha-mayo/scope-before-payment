@@ -1,7 +1,9 @@
 # Portable host work
 
-The Render sponsor credits are funding, not a completed migration. The existing
-Netlify deployment remains authoritative while the host adapter is qualified.
+The verified native Render/Neon release is authoritative after the November 9
+cutover; the old Netlify source and previews are private. See the
+[dated release evidence](NATIVE_RELEASE_20261109.md). Sponsor credits alone did
+not establish that migration. PayPal qualification remains separate.
 
 `apps/scope-web/server/node-http.mjs` supplies a Node HTTP transport for the same
 Web Request/Response API. It has no identity or provider fallback. The caller
@@ -16,7 +18,9 @@ identities and authored AI/PayPal replies remain in the isolated fixture only.
 The complete browser and recording workflows therefore exercise the HTTP
 boundary intended for the new host, including original-attempt recovery.
 
-This module is not a complete production launch command. Before a cutover:
+The original cutover review required the following gates. The dated native
+release records which were completed; real capture and signed delivery remain
+open until specifically verified:
 
 - Wire and natively qualify real identity and refresh/callback behavior.
 - Provide the disclosed, bounded AI route while retaining old results/claims.
@@ -29,8 +33,7 @@ This module is not a complete production launch command. Before a cutover:
 The separate [`portable` authentication adapter](../apps/scope-web/portable/README.md)
 now supplies a maintained SDK path for GitHub sign-in, immutable mappings to
 legacy Scope actors, current-database session revocation and an external restore
-epoch. It has no production test-login route and does not change Netlify's
-deployed identity service. Its owned SDK/SQL/HTTP and combined-schema restore
+epoch. It has no production test-login route. Its owned SDK/SQL/HTTP and combined-schema restore
 checks are distinct from native provider authorization and production cutover.
 
 Do not publish the authored fixture or initialize an empty payment journal as
