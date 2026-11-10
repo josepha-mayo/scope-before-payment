@@ -75,8 +75,8 @@ test('real SDK sandbox callback binds an opaque subject and payer, encrypts its 
  const made=await merchant.create({requestId:randomUUID(),buyerEmail:info.email,projectName:'Owned signed PayPal buyer flow',messages:[{id:'M1',role:'merchant',text:'One digital heron PNG for the buyer’s website only. No resale. January 12, one revision, USD5 in full before work.'}]});
  const q=(await merchant.publish(made.workspaceId,{requestId:randomUUID(),expectedRevision:0,sourceVersion:1,sourceBinding:made.source.binding,confirmation:'publish-exact-reviewed-offer',fields:{deliverable:'One digital heron PNG.',usage:'Own website only. No resale.',delivery:'January 12, 2027',revisions:'One round.',price:'5.00',terms:'Single full payment of USD5.00 before work starts.'}})).quote;
  assert.notEqual((await creatorPrincipal.getUser()).id,user.id);
- const buyerApi=createApiHandler({getUser:p.getUser,getPool:async()=>pool});
- const post=(path,input)=>buyerApi(new Request(configuration.origin+path,{method:'POST',headers:{cookie,origin:configuration.origin,'content-type':'application/json','x-scope-session':user.id},body:JSON.stringify(input)}));
+ const buyerApi=createApiHandler({getUser:p.getUser,getPool:async()=>pool,canWrite:()=>true});
+ const post=(path,input)=>buyerApi(new Request(configuration.origin+path,{method:'POST',headers:{cookie,origin:configuration.origin,'content-type':'application/json','x-scope-session':user.id,'x-scope-action':'explicit-user-action'},body:JSON.stringify(input)}));
  assert.equal((await post('/api/v1/invitations/'+made.workspaceId+'/join',{requestId:randomUUID(),confirmation:'join-this-invited-workspace'})).status,200);
  const accepted=await post('/api/v1/workspaces/'+made.workspaceId+'/accept',{requestId:randomUUID(),revision:q.revision,quoteBinding:q.binding,confirmation:'accept-exact-published-offer'});assert.equal(accepted.status,200);assert.equal((await accepted.json()).data.accepted,true);
  assert.equal((await merchant.read(made.workspaceId)).accepted,true);
