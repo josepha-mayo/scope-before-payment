@@ -17,12 +17,13 @@ Joining, copying suggestions, publishing and accepting never request payment.
 
 ## Try it
 
-[Watch the revised 2:32 prototype demo](https://www.youtube.com/watch?v=89WKFiUpklM)
-with Joseph's own consented, locally cloned voice, focused UI views and English
-captions. [View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
-The repeatable workflow uses authored accounts, an AI replay and authored PayPal
-replies. Separate dated screenshots show a retained live Claude result and an
-original historical sandbox order response. Real capture and registered signed
+[Watch the revised 1:57 prototype demo](https://www.youtube.com/watch?v=IP6C7GZOy94)
+with Joseph's own consented, locally cloned voice, readable close-ups and timed
+English captions. [View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
+The opening shows the actual hosted conversation, saved NVIDIA review and exact
+USD48 offer. Buyer changes and payment recovery are separately labeled local
+rehearsals with authored accounts and PayPal replies. Dated screenshots retain
+the earlier live Claude and historical sandbox order evidence. Real capture and registered signed
 delivery remain unverified. See the [recording and edit notes](docs/REVIEW_CUT.md).
 
 [Hosted workspace](https://scope-before-payment.onrender.com) — sign in with
@@ -32,6 +33,9 @@ NVIDIA review are active; retained Claude reviews remain readable. A free-host
 cold start can take 50 seconds or more. Hosted PayPal checkout is inactive; a real hosted sandbox
 capture and registered webhook delivery have not been demonstrated.
 See the [dated native release evidence and limitations](docs/NATIVE_RELEASE_20261109.md).
+Optional [PayPal Sandbox buyer sign-in](docs/PAYPAL_SIGNIN_QUALIFICATION.md) is
+being qualified separately from checkout. Read the [sandbox data-use notice](docs/SANDBOX_DATA_USE.md)
+and [testing notice](docs/SANDBOX_TESTING_NOTICE.md) before trying the host.
 
 The source also includes a private [account data copy](docs/ACCOUNT_DATA_COPY.md)
 with older saved conversations and paginated history. These source features are

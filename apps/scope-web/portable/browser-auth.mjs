@@ -19,7 +19,7 @@ export function createBrowserIdentity({location,history,channel,client=createAut
       if(provider!=='github'&&!(provider==='paypal'&&paypalEnabled))throw Error('provider_unavailable');
       const value=accepted(await client.signIn.social({provider},{disableSignal:true}));
       let target;try{target=new URL(value.url);}catch{throw Error('sign_in_unavailable');}
-      const permitted=provider==='github'?target.origin==='https://github.com'&&target.pathname==='/login/oauth/authorize':target.origin==='https://www.sandbox.paypal.com'&&target.pathname==='/signin/authorize';
+      const permitted=provider==='github'?target.origin==='https://github.com'&&target.pathname==='/login/oauth/authorize':target.origin==='https://www.sandbox.paypal.com'&&target.pathname==='/connect';
       if(!permitted||target.username||target.password||target.hash)throw Error('sign_in_unavailable');
       location.assign(target.href);
     },

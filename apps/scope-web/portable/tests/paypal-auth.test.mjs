@@ -31,10 +31,11 @@ function req(path,body){return new Request(configuration.origin+'/api/auth/'+pat
 async function start(){
  const peer={remoteAddress:'192.0.2.'+(++peerCounter)},response=await boundary(req('sign-in/social',{provider:'paypal'}),peer);
  assert.equal(response.status,200);const target=new URL((await response.json()).url),state=target.searchParams.get('state');
- assert.equal(target.origin,'https://www.sandbox.paypal.com');assert.equal(target.pathname,'/signin/authorize');
+ assert.equal(target.origin,'https://www.sandbox.paypal.com');assert.equal(target.pathname,'/connect');
  assert.equal(target.searchParams.get('redirect_uri'),configuration.origin+'/api/auth/callback/paypal');
  assert.equal(target.searchParams.get('code_challenge_method'),'S256');assert.ok(target.searchParams.get('code_challenge'));
- assert.equal(target.searchParams.has('scope'),false,'SDK leaves identity permissions to the existing PayPal app configuration');
+ assert.equal(target.searchParams.get('flowEntry'),'static');
+ assert.equal(target.searchParams.get('scope'),'openid profile email https://uri.paypal.com/services/paypalattributes');
  const cookie=response.headers.getSetCookie().find(x=>x.startsWith('__Secure-scope.state=')).split(';')[0];
  return {peer,cookie,state,callbackUrl:configuration.origin+'/api/auth/callback/paypal?code=owned-code&state='+encodeURIComponent(state)};
 }

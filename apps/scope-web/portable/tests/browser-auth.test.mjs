@@ -13,10 +13,10 @@ test('portable client allows only its GitHub authorization destination and propa
   await assert.rejects(good.identity.oauthLogin('other'));assert.equal(good.signIns(),1);
 });
 test('PayPal navigation requires server enablement and the exact sandbox authorization destination',async()=>{
-  const url='https://www.sandbox.paypal.com/signin/authorize?state=owned',good=fixture({paypal:true,reply:{data:{url}}});
+  const url='https://www.sandbox.paypal.com/connect?state=owned',good=fixture({paypal:true,reply:{data:{url}}});
   await assert.rejects(good.identity.oauthLogin('paypal'));assert.equal(good.signIns(),0);
   await good.identity.getSettings();await good.identity.oauthLogin('paypal');assert.deepEqual(good.navigated,[url]);
-  for(const target of ['https://www.paypal.com/signin/authorize','http://www.sandbox.paypal.com/signin/authorize','https://www.sandbox.paypal.com.attacker.invalid/signin/authorize','https://user:pass@www.sandbox.paypal.com/signin/authorize','https://www.sandbox.paypal.com/signin/authorize#token','https://github.com/login/oauth/authorize']){const f=fixture({paypal:true,reply:{data:{url:target}}});await f.identity.getSettings();await assert.rejects(f.identity.oauthLogin('paypal'));assert.equal(f.navigated.length,0);}
+  for(const target of ['https://www.paypal.com/connect','http://www.sandbox.paypal.com/connect','https://www.sandbox.paypal.com.attacker.invalid/connect','https://user:pass@www.sandbox.paypal.com/connect','https://www.sandbox.paypal.com/connect#token','https://www.sandbox.paypal.com/signin/authorize','https://github.com/login/oauth/authorize']){const f=fixture({paypal:true,reply:{data:{url:target}}});await f.identity.getSettings();await assert.rejects(f.identity.oauthLogin('paypal'));assert.equal(f.navigated.length,0);}
 });
 test('callback markers are cleaned and duplicate or failed markers never become a successful callback',async()=>{
   const complete=fixture({url:'https://scope-owned.example/?signin=complete'});assert.deepEqual(await complete.identity.handleAuthCallback(),{type:'oauth'});assert.deepEqual(complete.replaced,['/']);
