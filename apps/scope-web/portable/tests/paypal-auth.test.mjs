@@ -87,7 +87,9 @@ test('subject mismatch, expired state and token failure confer no identity and d
  const mismatch=await callback(await start(),info,{idToken:jwt});assert.equal(sessionCookie(mismatch.response),undefined);assert.equal(mismatch.logs.length,0);
  assert.equal((await pool.query('SELECT 1 FROM scope_identity.paypal_payer_links WHERE provider_subject=$1',[info.user_id])).rowCount,0);
  const failed=await callback(await start(),profile(),{tokenFailure:true});assert.equal(sessionCookie(failed.response),undefined);assert.equal(failed.calls,1);assert.equal(failed.logs.length,0);
- const f=await start();await pool.query("UPDATE scope_identity.verifications SET expires_at=now()-interval '1 minute' WHERE identifier=$1",['auth-state:'+f.state]);
+ // The SDK's state contains its authoritative expiry as well as the database
+ // cleanup deadline. Advance both as actual passage of time would do.
+ const f=await start();await pool.query("UPDATE scope_identity.verifications SET expires_at=now()-interval '1 minute',value=jsonb_set(value::jsonb,'{expiresAt}',to_jsonb((extract(epoch FROM now()-interval '1 minute')*1000)::bigint))::text WHERE identifier=$1",['auth-state:'+f.state]);
  const expired=await boundary(new Request(f.callbackUrl,{headers:{cookie:f.cookie}}),f.peer);assert.equal(sessionCookie(expired),undefined);
 });
 
