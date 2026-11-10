@@ -7,13 +7,14 @@ import {createRequestPrincipal} from './principal.mjs';
 // migration starts read-only; activating writes/providers needs separate gates.
 // No secret, SDK response, provider account or auth-user ID reaches the app UI.
 export function createPortableApplication({pool,configuration,canWrite=()=>false,canEnroll=canWrite,report=()=>{},draftProvider,checkoutProvider}){
-  const auth=createPortableAuth({pool,configuration});
-  const authentication=createAuthBoundary({auth,origin:configuration.origin,canEnroll,canWrite});
+  const auth=createPortableAuth({pool,configuration,canEnroll});
+  const paypalEnabled=configuration.paypal!==undefined;
+  const authentication=createAuthBoundary({auth,origin:configuration.origin,canEnroll,canWrite,paypalEnabled});
   return async(request,transport)=>{
     const url=new URL(request.url);
     if(url.origin!==configuration.origin)return new Response(null,{status:421,headers:{'Cache-Control':'private, no-store'}});
     if(url.pathname.startsWith('/api/auth/'))return authentication(request,transport);
-    const principal=createRequestPrincipal({auth,pool,request,epoch:configuration.epoch,allowEnrollment:canEnroll});
+    const principal=createRequestPrincipal({auth,pool,request,epoch:configuration.epoch,allowEnrollment:canEnroll,allowPaypal:()=>paypalEnabled});
     const handle=createApiHandler({getUser:principal.getUser,getPool:async()=>pool,canWrite,report,draftProvider,checkoutProvider});
     return principal.withCookies(await handle(request));
   };

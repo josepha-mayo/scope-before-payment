@@ -81,7 +81,13 @@ async function main(){
   await docker('exec',container,'createdb','-U','scope_fixture',targetName);
   await docker('exec',container,'pg_restore','-U','scope_fixture','-d',targetName,'--exit-on-error',dump);
   const targetUrl=new URL(url);targetUrl.pathname='/'+targetName;target=new pg.Pool({connectionString:targetUrl.href,max:3,connectionTimeoutMillis:3000});
-  const restored=await manifest(target);assert.equal(hash(restored),hash(before));
+  const restored=await manifest(target);
+  receipt.restoreComparison={sourceSha256:hash(before),restoredSha256:hash(restored),dataMatch:hash(before.data)===hash(restored.data),sequenceMatch:hash(before.sequences)===hash(restored.sequences),catalogMismatchKeys:Object.keys(before.catalog).filter(key=>hash(before.catalog[key])!==hash(restored.catalog[key]))};
+  if(receipt.restoreComparison.catalogMismatchKeys.includes('constraints')){
+    const key=c=>c.nspname+'.'+c.relname+'.'+c.conname,after=new Map(restored.catalog.constraints.map(c=>[key(c),c]));
+    receipt.constraintDifferences=before.catalog.constraints.filter(c=>hash(c)!==hash(after.get(key(c))??null)).slice(0,10).map(c=>({key:key(c),source:c,restored:after.get(key(c))??null}));
+  }
+  assert.equal(hash(restored),hash(before));
   receipt.checks.applicationAndIdentityRowsCatalogSequencesMatch=true;
   receipt.checks.populatedAiAndPaymentJournalsPreserved=true;
   receipt.tables=before.data.map(({schemaname,tablename,rows})=>({schema:schemaname,name:tablename,rows}));receipt.dataSha256=hash(before.data);receipt.catalogSha256=hash(before.catalog);receipt.sequenceSha256=hash(before.sequences);
@@ -102,7 +108,7 @@ async function main(){
   receipt.checks.restoredActorMappingImmutable=true;assert.equal(networkCalls,0);receipt.externalProviderRequests=0;
   receipt.status='passed';
 }
-try{await main();}catch{receipt.status='failed';receipt.failedPhase=phase;process.exitCode=1;}
+try{await main();}catch(error){receipt.status='failed';receipt.failedPhase=phase;receipt.errorCode=typeof error.code==='string'?error.code:null;receipt.operatorErrorSummary=String(error.stderr??'').split(/\r?\n/).find(line=>/^(pg_restore|pg_dump): error:/.test(line))?.slice(0,350)??null;process.exitCode=1;}
 finally{
   globalThis.fetch=originalFetch;await Promise.allSettled([source?.end(),target?.end()]);
   await writeFile(new URL('../restore-receipt.json',import.meta.url),JSON.stringify(receipt,null,2)+'\n',{flag:'wx'});

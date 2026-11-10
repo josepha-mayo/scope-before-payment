@@ -5,6 +5,7 @@ DO $$ BEGIN EXECUTE format('GRANT CONNECT ON DATABASE %I TO scope_portable_reade
 GRANT USAGE ON SCHEMA scope_app,scope_identity TO scope_portable_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA scope_app TO scope_portable_reader;
 GRANT SELECT ON scope_identity.actor_links TO scope_portable_reader;
+GRANT SELECT ON scope_identity.paypal_payer_links TO scope_portable_reader;
 GRANT SELECT,INSERT,UPDATE,DELETE ON
   scope_identity.users,scope_identity.accounts,scope_identity.sessions,
   scope_identity.verifications,scope_identity.rate_limits TO scope_portable_reader;

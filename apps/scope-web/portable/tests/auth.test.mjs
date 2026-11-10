@@ -30,7 +30,7 @@ test.before(async()=>{
   if((await pool.query("SELECT to_regnamespace('scope_app') AS existing")).rows[0].existing===null){
     for(const name of (await readdir(new URL('../../netlify/database/migrations/',import.meta.url))).filter(x=>x.endsWith('.sql')).sort())await pool.query(await readFile(new URL('../../netlify/database/migrations/'+name,import.meta.url),'utf8'));
   }
-  for(const name of ['001_better_auth.sql','002_actor_links.sql'])await pool.query(await readFile(new URL('../migrations/'+name,import.meta.url),'utf8'));
+  for(const name of ['001_better_auth.sql','002_actor_links.sql','003_paypal_sandbox_identity.sql'])await pool.query(await readFile(new URL('../migrations/'+name,import.meta.url),'utf8'));
   // Privileged SDK helpers exist only in this test module, never production.
   const fixtureAuth=betterAuth({...authOptions({pool,configuration}),plugins:[testUtils()]});
   helpers=(await fixtureAuth.$context).test;

@@ -27,3 +27,9 @@ test('writes, provider dispatch and enrollment require separate explicit setting
   const enabled=runtimeConfiguration({...base,SCOPE_PORTABLE_AI_PROVIDER:'nvidia',SCOPE_PORTABLE_ENROLLMENT:'enabled',SCOPE_NVIDIA_API_KEY:['nvapi',randomBytes(24).toString('hex')].join('-')});
   assert.equal(enabled.ai,'nvidia');assert.equal(enabled.enrollment,true);assert.equal(enabled.pool.ssl.rejectUnauthorized,true);
 });
+
+test('sandbox buyer identity cannot start in read-only mode',()=>{
+  const env={...environment(),SCOPE_PAYPAL_SIGNIN_ENABLED:'true',PAYPAL_SANDBOX_CLIENT_ID:randomBytes(24).toString('hex'),PAYPAL_SANDBOX_CLIENT_SECRET:randomBytes(24).toString('hex')};
+  assert.throws(()=>runtimeConfiguration(env),/activation_invalid/);
+  const c=runtimeConfiguration({...env,SCOPE_PORTABLE_MODE:'write',SCOPE_PORTABLE_CUTOVER_RECEIPT:'a'.repeat(64)});assert.ok(c.auth.paypal);assert.equal(c.pool.ssl.rejectUnauthorized,true);
+});

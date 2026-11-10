@@ -17,7 +17,7 @@ const appTables=['workspaces','sources','quotes','acceptances','operations','inv
 const identityTables=['users','accounts','sessions','verifications','rate_limits','actor_links'];
 
 export async function verifyMigratedSchema(pool,configuration){
-  const required=[...appTables.map(name=>'scope_app.'+name),...identityTables.map(name=>'scope_identity.'+name)];
+  const required=[...appTables.map(name=>'scope_app.'+name),...identityTables.map(name=>'scope_identity.'+name),...(configuration.auth?.paypal?['scope_identity.paypal_payer_links']:[])];
   const result=await pool.query('SELECT name,to_regclass(name)::text AS relation FROM unnest($1::text[]) AS name',[required]);
   if(result.rows.length!==required.length||result.rows.some(row=>!row.relation))throw Error('runtime_schema_incomplete');
   const mapping=await pool.query("SELECT actor_id FROM scope_identity.actor_links WHERE provider='github' AND provider_subject=$1 AND created_via='legacy-migration'",[configuration.legacySubject]);
@@ -43,12 +43,12 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
   try{
     await verifyPortableBuild(staticDirectory);phase='schema';
     await verifyMigratedSchema(pool,configuration);
-    await verifyRuntimeRole(pool,{write:configuration.mode==='write',ai:configuration.ai==='nvidia',enrollment:configuration.enrollment});
+    await verifyRuntimeRole(pool,{write:configuration.mode==='write',ai:configuration.ai==='nvidia',enrollment:configuration.enrollment,paypalIdentity:configuration.auth.paypal!==undefined});
     releaseTransport=installOAuthFetchGuard();phase='listen';
     const recovery=createRecoveryPolicy({read:key=>env[key]}),writable=()=>configuration.mode==='write'&&recovery.writable();
     const canEnroll=()=>writable()&&configuration.enrollment;
     const draftProvider=configuration.ai==='nvidia'?guardDraftProvider(createNvidiaDraftProvider({loadKey:async()=>env.SCOPE_NVIDIA_API_KEY,available:writable}),recovery):undefined;
-    const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:false,registrationEnabled:canEnroll()});
+    const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:false,paypalSignInEnabled:configuration.auth.paypal!==undefined,registrationEnabled:canEnroll()});
     const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider});
     server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,
       async staticResponse(request){
