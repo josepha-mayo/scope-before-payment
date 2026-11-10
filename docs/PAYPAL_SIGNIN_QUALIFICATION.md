@@ -21,3 +21,20 @@ client accepts only the exact sandbox authorization destination.
 Owned tests exercise the actual SDK-generated URL and callback with authored
 provider replies. They cannot establish real buyer login or payment. Check the
 dated native release evidence for the outcome of the real provider check.
+
+The real callback on November 10 reached UserInfo but failed with
+`paypal_email_proof_missing` and `oauth_callback_email_not_found`. The installed
+SDK fetches `schema=paypalv1.1` while its default email mapping expects OIDC's
+top-level `email` and `email_verified`. PayPal's
+[published legacy response example](https://www.paypalobjects.com/devdoc/xs2a.pdf)
+places the email in `emails[]` with `value`, `primary` and `confirmed`.
+
+The SDK's supported profile mapping now normalizes these two response formats.
+Legacy proof requires exactly one primary email and boolean `confirmed: true`;
+OIDC proof still requires boolean `email_verified: true`. Conflicting formats,
+ambiguous primary emails and string flags fail closed. Account verification is
+never substituted for email confirmation. Subject/payer bindings, SDK state,
+PKCE, token exchange, UserInfo transport and encrypted token storage stay intact.
+Authored callback tests exercise this legacy response through the actual SDK,
+invitation, acceptance and immutable payment-profile checks. A real login must
+still be verified after deploying the checked correction.

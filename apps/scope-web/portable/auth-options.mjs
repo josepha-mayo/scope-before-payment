@@ -1,5 +1,5 @@
 import {PostgresDialect} from 'kysely';
-import {bindPayPalUserInfo,validPayPalSubject,validPayPalPayer} from './paypal-identity.mjs';
+import {bindPayPalUserInfo,validPayPalSubject,validPayPalPayer,normalizePayPalEmail} from './paypal-identity.mjs';
 import {safeSdkLogger} from './auth-signals.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -44,9 +44,10 @@ export function authOptions({pool,configuration,canEnroll=()=>false,authSignal=(
     socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true},
       ...(c.paypal?{paypal:{...c.paypal,environment:'sandbox',authorizationEndpoint:paypalAuthorizationEndpoint,requestShippingAddress:false,overrideUserInfoOnSignIn:true,
         mapProfileToUser:async profile=>{
-          const emailVerified=await bindPayPalUserInfo({pool,profile,canEnroll});
-          try{authSignal({code:emailVerified?'paypal_identity_proof_bound':profile?.email_verified!==true?'paypal_email_proof_missing':!validPayPalSubject(profile?.user_id)?'paypal_subject_proof_missing':!validPayPalPayer(profile?.payer_id)?'paypal_payer_proof_missing':'paypal_identity_binding_rejected'});}catch{}
-          return {emailVerified};
+          const proof=normalizePayPalEmail(profile);
+          const emailVerified=await bindPayPalUserInfo({pool,profile:{...profile,...proof},canEnroll});
+          try{authSignal({code:emailVerified?'paypal_identity_proof_bound':proof.email_verified!==true?'paypal_email_proof_missing':!validPayPalSubject(profile?.user_id)?'paypal_subject_proof_missing':!validPayPalPayer(profile?.payer_id)?'paypal_payer_proof_missing':'paypal_identity_binding_rejected'});}catch{}
+          return {email:proof.email,emailVerified};
         }}}:{})},
     user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'},
       async validateUserInfo({user,source}){

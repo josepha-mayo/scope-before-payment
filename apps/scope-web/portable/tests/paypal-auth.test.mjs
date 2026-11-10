@@ -62,8 +62,9 @@ async function callback(f,info,{idToken,tokenFailure=false}={}){
 const sessionCookie=response=>response.headers.getSetCookie().find(x=>x.startsWith('__Secure-scope.session_token=')&&!x.includes('Max-Age=0'))?.split(';')[0];
 const principal=(cookie,extra={})=>createRequestPrincipal({auth,pool,request:new Request(configuration.origin+'/api/v1/me',{headers:{cookie}}),epoch:configuration.epoch,allowEnrollment:()=>true,allowPaypal:()=>true,...extra});
 
-test('real SDK sandbox callback binds an opaque subject and payer, encrypts its token and consumes state once (authored PayPal replies)',async()=>{
- const info=profile(),f=await start(),r=await callback(f,info);assert.equal(r.calls,2);assert.equal(r.logs.length,0);
+test('real SDK paypalv1.1 callback binds an opaque subject and payer, encrypts its token and consumes state once (authored PayPal replies)',async()=>{
+ const info=profile(),{email,email_verified,...legacy}=info;legacy.emails=[{value:email,primary:true,confirmed:email_verified}];
+ const f=await start(),r=await callback(f,legacy);assert.equal(r.calls,2);assert.equal(r.logs.length,0);
  assert.equal(r.response.headers.get('location'),configuration.origin+'/?signin=complete');const cookie=sessionCookie(r.response);assert.ok(cookie);
  const p=principal(cookie),user=await p.getUser();assert.ok(user.id);assert.equal(user.emailVerified,true);assert.deepEqual(user.paymentIdentity,{provider:'paypal',environment:'sandbox',payerId:info.payer_id});
  const a=(await pool.query("SELECT user_id,access_token FROM scope_identity.accounts WHERE provider_id='paypal' AND provider_subject=$1",[info.user_id])).rows[0];
@@ -95,7 +96,8 @@ test('real SDK sandbox callback binds an opaque subject and payer, encrypts its 
 test('missing fresh verified email or payer proof rejects a returning buyer and removes earlier routing/payment authority',async()=>{
  const info=profile(),first=await callback(await start(),info),cookie=sessionCookie(first.response);assert.ok(cookie);
  const before=await principal(cookie).getUser();assert.ok(before.paymentIdentity);
- for(const changed of [{...info,email_verified:false},{...info,payer_id:undefined},{...info,payer_id:payer()}]){
+ const {email,email_verified,...legacy}=info;
+ for(const changed of [{...info,email_verified:false},{...legacy,emails:[{value:email,primary:true,confirmed:false}]},{...info,payer_id:undefined},{...info,payer_id:payer()}]){
    const r=await callback(await start(),changed);assert.notEqual(r.response.headers.get('location'),configuration.origin+'/?signin=complete');assert.equal(sessionCookie(r.response),undefined);
    const old=await principal(cookie).getUser();assert.equal(old.id,before.id);assert.equal(old.emailVerified,false);assert.equal(old.paymentIdentity,undefined);
  }
