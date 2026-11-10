@@ -83,6 +83,10 @@ async function main(){
   const targetUrl=new URL(url);targetUrl.pathname='/'+targetName;target=new pg.Pool({connectionString:targetUrl.href,max:3,connectionTimeoutMillis:3000});
   const restored=await manifest(target);
   receipt.restoreComparison={sourceSha256:hash(before),restoredSha256:hash(restored),dataMatch:hash(before.data)===hash(restored.data),sequenceMatch:hash(before.sequences)===hash(restored.sequences),catalogMismatchKeys:Object.keys(before.catalog).filter(key=>hash(before.catalog[key])!==hash(restored.catalog[key]))};
+  if(receipt.restoreComparison.catalogMismatchKeys.includes('constraints')){
+    const key=c=>c.nspname+'.'+c.relname+'.'+c.conname,after=new Map(restored.catalog.constraints.map(c=>[key(c),c]));
+    receipt.constraintDifferences=before.catalog.constraints.filter(c=>hash(c)!==hash(after.get(key(c))??null)).slice(0,10).map(c=>({key:key(c),source:c,restored:after.get(key(c))??null}));
+  }
   assert.equal(hash(restored),hash(before));
   receipt.checks.applicationAndIdentityRowsCatalogSequencesMatch=true;
   receipt.checks.populatedAiAndPaymentJournalsPreserved=true;
