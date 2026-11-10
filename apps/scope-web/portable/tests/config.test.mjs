@@ -23,6 +23,17 @@ test('PayPal identity is explicit, sandbox-only and uses the installed provider 
   const options=authOptions({pool:{query(){}},configuration});assert.equal(options.socialProviders.paypal.environment,'sandbox');assert.equal(options.socialProviders.paypal.requestShippingAddress,false);
   assert.equal(options.socialProviders.paypal.getUserInfo,undefined);assert.equal(options.socialProviders.paypal.validateAuthorizationCode,undefined);assert.equal(options.account.accountLinking.enabled,false);
 });
+test('installed PayPal SDK emits the documented OIDC request while retaining state and PKCE',async()=>{
+  const configuration=authConfiguration({...environment(),SCOPE_PAYPAL_SIGNIN_ENABLED:'true',PAYPAL_SANDBOX_CLIENT_ID:randomBytes(24).toString('hex'),PAYPAL_SANDBOX_CLIENT_SECRET:randomBytes(24).toString('hex')});
+  const auth=createPortableAuth({pool:{query(){throw Error('unexpected_database_call');}},configuration});
+  const provider=(await auth.$context).socialProviders.find(p=>p.id==='paypal');
+  const url=await provider.createAuthorizationURL({state:'owned-correlation-state',codeVerifier:'owned-verifier-that-must-remain-bound',redirectURI:configuration.origin+'/api/auth/callback/paypal'});
+  assert.equal(url.origin,'https://www.sandbox.paypal.com');assert.equal(url.pathname,'/connect');
+  assert.equal(url.searchParams.get('scope'),'openid profile email https://uri.paypal.com/services/paypalattributes');
+  assert.equal(url.searchParams.get('flowEntry'),'static');assert.equal(url.searchParams.get('response_type'),'code');
+  assert.equal(url.searchParams.get('state'),'owned-correlation-state');assert.equal(url.searchParams.get('code_challenge_method'),'S256');assert.ok(url.searchParams.get('code_challenge'));
+  assert.equal(url.searchParams.get('client_id'),configuration.paypal.clientId);assert.equal(url.searchParams.get('redirect_uri'),configuration.origin+'/api/auth/callback/paypal');
+});
 test('production factory has no privileged test helper and never trusts a forwarded origin',async()=>{
   const configuration=authConfiguration(environment());
   const pool={query(){throw Error('unexpected_database_call');},connect(){throw Error('unexpected_database_call');}};

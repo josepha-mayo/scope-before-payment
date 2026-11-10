@@ -2,6 +2,11 @@ import {PostgresDialect} from 'kysely';
 import {bindPayPalUserInfo} from './paypal-identity.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+// PayPal's documented button flow requires explicit OIDC scopes. The pinned
+// provider passes no scopes and ignores options.scope; its supported endpoint
+// option preserves these server-owned query values while the SDK still adds
+// state, PKCE, client ID and the exact callback. No caller controls this URL.
+const paypalAuthorizationEndpoint='https://www.sandbox.paypal.com/connect?'+new URLSearchParams({flowEntry:'static',scope:'openid profile email https://uri.paypal.com/services/paypalattributes'});
 
 // Server-owned configuration only. Never derive the public origin, signing key,
 // restore epoch or provider configuration from a request or forwarded header.
@@ -36,7 +41,7 @@ export function authOptions({pool,configuration,canEnroll=()=>false}){
     database:{dialect:new PostgresDialect({pool}),type:'postgres',schemaName:'scope_identity',transaction:true},
     emailAndPassword:{enabled:false},
     socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true},
-      ...(c.paypal?{paypal:{...c.paypal,environment:'sandbox',requestShippingAddress:false,overrideUserInfoOnSignIn:true,
+      ...(c.paypal?{paypal:{...c.paypal,environment:'sandbox',authorizationEndpoint:paypalAuthorizationEndpoint,requestShippingAddress:false,overrideUserInfoOnSignIn:true,
         mapProfileToUser:async profile=>({emailVerified:await bindPayPalUserInfo({pool,profile,canEnroll})})}}:{})},
     user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'},
       async validateUserInfo({user,source}){
