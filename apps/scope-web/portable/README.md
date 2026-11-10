@@ -13,6 +13,39 @@ provider-response override or unsigned identity fallback.
 
 ## Ownership and session boundaries
 
+### Optional PayPal sandbox buyer identity
+
+`SCOPE_PAYPAL_SIGNIN_ENABLED` defaults to `false`. The built-in Better Auth
+PayPal provider is separately enabled only in write mode, with the existing
+`PAYPAL_SANDBOX_CLIENT_ID` and `PAYPAL_SANDBOX_CLIENT_SECRET`. Its environment is
+fixed to sandbox. It does not construct or activate the checkout provider.
+
+Before activation, apply reviewed identity migration
+`003_paypal_sandbox_identity.sql`, grant reader SELECT on its new
+`scope_identity.paypal_payer_links` table, and separately apply/grant the narrow
+`sql/paypal-identity-role.sql` group to the existing app login. Startup checks
+these insert permissions when the provider is enabled. No startup DDL, new
+credential, financial grant or history reset is performed.
+
+The exact callback is `/api/auth/callback/paypal` on the configured HTTPS origin.
+The existing PayPal app must enable Log in with PayPal and the minimum name,
+email and PayPal account-ID attributes; shipping address is not requested.
+The SDK owns its sandbox authorization, PKCE, state, code exchange and UserInfo
+transport. There is no production UserInfo or token-response override.
+
+Opaque PayPal `user_id` and API `payer_id` are distinct. A trusted SDK UserInfo
+hook privately retains their immutable binding only with verified email and a
+valid payer ID. An exact signed-session subject resolves under the separate
+`paypal-sandbox` actor namespace. Email never adopts a creator actor. Missing
+fresh verification/payer proof rejects sign-in and downgrades an exact returning
+account's routing/payment authority. Cross-provider or multiple-account ambiguity
+fails closed. `/me` omits provider subjects, payer IDs and OAuth tokens.
+
+Turning off this setting disables the callback and private PayPal-session access.
+This path needs native account/permission qualification; authored SDK callbacks
+prove code behavior, not a real PayPal sign-in, independent human agreement,
+capture, or registered signed webhook delivery.
+
 - Scope actor IDs remain separate from authentication user IDs. A GitHub
   numeric subject maps to one immutable Scope actor. Email, a GitHub login name,
   browser headers and request bodies cannot select a legacy actor.

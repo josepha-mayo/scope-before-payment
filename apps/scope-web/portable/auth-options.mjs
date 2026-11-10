@@ -1,4 +1,5 @@
 import {PostgresDialect} from 'kysely';
+import {bindPayPalUserInfo} from './paypal-identity.mjs';
 
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -14,28 +15,39 @@ export function authConfiguration(env){
   if(typeof epoch!=='string'||!uuid.test(epoch))throw Error('auth_epoch_required');
   const clientId=env.SCOPE_GITHUB_CLIENT_ID,clientSecret=env.SCOPE_GITHUB_CLIENT_SECRET;
   if(typeof clientId!=='string'||!clientId.trim()||typeof clientSecret!=='string'||!clientSecret.trim())throw Error('auth_provider_required');
-  return Object.freeze({origin:origin.origin,secret,epoch,clientId,clientSecret});
+  const paypalEnabled=env.SCOPE_PAYPAL_SIGNIN_ENABLED??'false';
+  if(!['false','true'].includes(paypalEnabled))throw Error('auth_paypal_configuration_invalid');
+  let paypal;
+  if(paypalEnabled==='true'){
+    const paypalId=env.PAYPAL_SANDBOX_CLIENT_ID,paypalSecret=env.PAYPAL_SANDBOX_CLIENT_SECRET;
+    if(!/^[A-Za-z0-9_-]{20,256}$/.test(paypalId??'')||!/^[A-Za-z0-9_-]{20,256}$/.test(paypalSecret??''))throw Error('auth_paypal_configuration_required');
+    paypal=Object.freeze({clientId:paypalId,clientSecret:paypalSecret});
+  }
+  return Object.freeze({origin:origin.origin,secret,epoch,clientId,clientSecret,...(paypal?{paypal}:{})});
 }
 
-export function authOptions({pool,configuration}){
+export function authOptions({pool,configuration,canEnroll=()=>false}){
   if(!pool||typeof pool.query!=='function')throw Error('auth_pool_required');
   // Revalidate even when callers construct the configuration themselves.
-  const c=authConfiguration({SCOPE_PUBLIC_ORIGIN:configuration?.origin,SCOPE_AUTH_SECRET:configuration?.secret,SCOPE_AUTH_SESSION_EPOCH:configuration?.epoch,SCOPE_GITHUB_CLIENT_ID:configuration?.clientId,SCOPE_GITHUB_CLIENT_SECRET:configuration?.clientSecret});
+  const c=authConfiguration({SCOPE_PUBLIC_ORIGIN:configuration?.origin,SCOPE_AUTH_SECRET:configuration?.secret,SCOPE_AUTH_SESSION_EPOCH:configuration?.epoch,SCOPE_GITHUB_CLIENT_ID:configuration?.clientId,SCOPE_GITHUB_CLIENT_SECRET:configuration?.clientSecret,SCOPE_PAYPAL_SIGNIN_ENABLED:configuration?.paypal?'true':'false',PAYPAL_SANDBOX_CLIENT_ID:configuration?.paypal?.clientId,PAYPAL_SANDBOX_CLIENT_SECRET:configuration?.paypal?.clientSecret});
   return {
     appName:'Scope',baseURL:c.origin,basePath:'/api/auth',secret:c.secret,
     trustedOrigins:[c.origin],
     database:{dialect:new PostgresDialect({pool}),type:'postgres',schemaName:'scope_identity',transaction:true},
     emailAndPassword:{enabled:false},
-    socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true}},
+    socialProviders:{github:{clientId:c.clientId,clientSecret:c.clientSecret,disableDefaultScope:true,scope:['user:email'],overrideUserInfoOnSignIn:true},
+      ...(c.paypal?{paypal:{...c.paypal,environment:'sandbox',requestShippingAddress:false,overrideUserInfoOnSignIn:true,
+        mapProfileToUser:async profile=>({emailVerified:await bindPayPalUserInfo({pool,profile,canEnroll})})}}:{})},
     user:{modelName:'users',fields:{emailVerified:'email_verified',createdAt:'created_at',updatedAt:'updated_at'},
       async validateUserInfo({user,source}){
-        if(source.method!=='oauth'||source.oauth?.providerId!=='github'||user.emailVerified===true)return;
+        const provider=source.oauth?.providerId;
+        if(source.method!=='oauth'||!['github','paypal'].includes(provider)||user.emailVerified===true)return;
         // The SDK invokes returning sign-in validation only after resolving the
         // exact provider subject. A missing fresh proof must not preserve its
         // previous verified flag. This can only remove routing authority; an
         // unrelated same-email account never reaches this returning-user hook.
         if(source.action==='sign-in'&&uuid.test(user.id??''))await pool.query('UPDATE scope_identity.users SET email_verified=false,updated_at=now() WHERE id=$1',[user.id]);
-        return {error:'verified_github_email_required'};
+        return {error:provider==='paypal'?'verified_paypal_identity_required':'verified_github_email_required'};
       }},
     session:{modelName:'sessions',fields:{userId:'user_id',expiresAt:'expires_at',createdAt:'created_at',updatedAt:'updated_at',ipAddress:'ip_address',userAgent:'user_agent'},
       expiresIn:86400,updateAge:1800,freshAge:600,cookieCache:{enabled:false},

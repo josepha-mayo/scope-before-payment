@@ -21,8 +21,8 @@ async function boundedJson(request,timeoutMs){
 
 // Public SDK surface is deliberately limited. In particular get-session,
 // account/token APIs, user mutation and account linking are not HTTP routes.
-export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false,canWrite=canEnroll}){
-  if(new URL(origin).origin!==origin||!origin.startsWith('https://')||!Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000)throw Error('auth_boundary_configuration');
+export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=>false,canWrite=canEnroll,paypalEnabled=false}){
+  if(new URL(origin).origin!==origin||!origin.startsWith('https://')||!Number.isInteger(bodyTimeoutMs)||bodyTimeoutMs<10||bodyTimeoutMs>5000||typeof paypalEnabled!=='boolean')throw Error('auth_boundary_configuration');
   return async function handle(request,transport){
     const url=new URL(request.url);
     if(url.origin!==origin)return failure(421,'auth_host_rejected');
@@ -30,9 +30,9 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=
       if(request.method!=='GET'||url.search)return failure(400,'auth_settings_rejected');
       let enrollment=false;try{enrollment=canEnroll()===true;}catch{}
       let writable=false;try{writable=canWrite()===true;}catch{}
-      return Response.json({providers:{github:true,email:false},existingAccountsOnly:!enrollment,readOnly:!writable},{headers:security});
+      return Response.json({providers:{github:true,email:false,...(paypalEnabled?{paypal:true}:{})},existingAccountsOnly:!enrollment,readOnly:!writable},{headers:security});
     }
-    const signIn=url.pathname==='/api/auth/sign-in/social',signOut=url.pathname==='/api/auth/sign-out',callback=url.pathname==='/api/auth/callback/github';
+    const signIn=url.pathname==='/api/auth/sign-in/social',signOut=url.pathname==='/api/auth/sign-out',callback=url.pathname==='/api/auth/callback/github'||paypalEnabled&&url.pathname==='/api/auth/callback/paypal';
     if(!signIn&&!signOut&&!callback)return failure(404,'auth_route_not_found');
     if(request.method!==(callback?'GET':'POST'))return failure(405,'auth_method_rejected');
     if(!callback&&url.search)return failure(400,'auth_query_rejected');
@@ -45,7 +45,7 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=
     if(!callback){
       try{input=await boundedJson(request,bodyTimeoutMs);}catch(error){return failure(error.status??400,'auth_body_rejected');}
       if(!input||typeof input!=='object'||Array.isArray(input)||
-        (signIn?(Object.keys(input).length!==1||input.provider!=='github'):Object.keys(input).length!==0))return failure(400,'auth_body_rejected');
+        (signIn?(Object.keys(input).length!==1||!(input.provider==='github'||paypalEnabled&&input.provider==='paypal')):Object.keys(input).length!==0))return failure(400,'auth_body_rejected');
     }
     const headers=new Headers({'x-scope-transport-ip':transport.remoteAddress});
     for(const key of ['origin','sec-fetch-site','user-agent']){const value=request.headers.get(key);if(value!==null)headers.set(key,value);}
@@ -57,7 +57,7 @@ export function createAuthBoundary({auth,origin,bodyTimeoutMs=5000,canEnroll=()=
       if(safe)headers.set('cookie',safe);
     }
     if(!callback)headers.set('content-type','application/json');
-    const body=signIn?{provider:'github',callbackURL:origin+'/?signin=complete',errorCallbackURL:origin+'/?signin=failed',disableRedirect:true}:{};
+    const body=signIn?{provider:input.provider,callbackURL:origin+'/?signin=complete',errorCallbackURL:origin+'/?signin=failed',disableRedirect:true}:{};
     try{
       const response=await withOAuthDeadline(request.signal,()=>auth.handler(new Request(url,{method:request.method,headers,signal:request.signal,...(!callback?{body:JSON.stringify(body)}:{})})));
       const output=new Headers(response.headers);for(const [key,value]of Object.entries(security))output.set(key,value);

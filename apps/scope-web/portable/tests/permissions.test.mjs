@@ -12,13 +12,22 @@ test.after(()=>pool.end());
 async function probe(groups,fn){
   const c=await pool.connect();await c.query('BEGIN');
   try{
-    for(const name of ['reader-role.sql','commission-writer-role.sql','ai-writer-role.sql','enrollment-role.sql'])await c.query(await readFile(new URL('../sql/'+name,import.meta.url),'utf8'));
+    for(const name of ['reader-role.sql','commission-writer-role.sql','ai-writer-role.sql','enrollment-role.sql','paypal-identity-role.sql'])await c.query(await readFile(new URL('../sql/'+name,import.meta.url),'utf8'));
     await c.query('CREATE ROLE scope_permission_probe NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS');
     for(const group of groups)await c.query('GRANT '+group+' TO scope_permission_probe');
     await c.query('SET LOCAL ROLE scope_permission_probe');await fn(c);
   }finally{await c.query('ROLLBACK');c.release();}
 }
 const rejects=async(c,sql)=>{await c.query('SAVEPOINT denied');try{await assert.rejects(c.query(sql),e=>e.code==='42501');}finally{await c.query('ROLLBACK TO SAVEPOINT denied');}};
+
+test('sandbox identity grants permit only new subject/payer bindings and never financial or identity rewrites',async()=>{
+  await probe(['scope_portable_commission_writer','scope_portable_actor_enroller','scope_portable_paypal_identity_writer'],async c=>{
+    await verifyRuntimeRole(c,{write:true,enrollment:true,paypalIdentity:true});
+    await assert.rejects(verifyRuntimeRole(c,{write:true,enrollment:true}),/too_broad/);
+    await c.query('INSERT INTO scope_identity.paypal_payer_links(provider_subject,payer_id) VALUES($1,$2)',['https://www.paypal.com/owned/'+randomUUID(),'OWNED23456789']);
+    for(const sql of ['UPDATE scope_identity.paypal_payer_links SET payer_id=payer_id','DELETE FROM scope_identity.paypal_payer_links','TRUNCATE scope_identity.paypal_payer_links','INSERT INTO scope_identity.paypal_payer_links(created_at) VALUES(now())','INSERT INTO scope_app.checkout_calls(id) VALUES(gen_random_uuid())'])await rejects(c,sql);
+  });
+});
 
 test('the actual commission role runs creation and publication while timestamps, deletes and payment writes stay forbidden',async()=>{
   await probe(['scope_portable_commission_writer'],async c=>{

@@ -16,12 +16,13 @@ export const aiInserts=Object.freeze({
 });
 const workspaceUpdates=['current_source_version','current_revision','buyer_id'];
 const actorInserts=['provider','provider_subject','actor_id','created_via'];
+const paypalIdentityInserts=Object.freeze(['provider_subject','payer_id']);
 for(const columns of [...Object.values(commissionInserts),...Object.values(aiInserts),workspaceUpdates,actorInserts])Object.freeze(columns);
 
 // Inspect column permissions as well as table grants, including every role the
 // login can SET ROLE to. NOINHERIT membership must not hide an escalation path.
-export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=false}={}){
-  if(ai&&!write||enrollment&&!write)throw Error('runtime_permissions_invalid');
+export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=false,paypalIdentity=false}={}){
+  if(ai&&!write||enrollment&&!write||paypalIdentity&&!write)throw Error('runtime_permissions_invalid');
   const roles=(await pool.query("SELECT oid,rolname,rolname=current_user AS active,rolsuper,rolcreaterole,rolcreatedb,rolreplication,rolbypassrls FROM pg_roles WHERE pg_has_role(current_user,oid,'SET')")).rows;
   if(!roles.length)throw Error('runtime_database_role_too_broad');
   const insertAllowed=write?{...commissionInserts,...(ai?aiInserts:{})}:{};
@@ -42,7 +43,7 @@ export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=fa
     if(role.active)activeColumns=columns;
     for(const c of columns){
       const auth=c.schema==='scope_identity'&&authTables.has(c.name);
-      const inserts=c.schema==='scope_app'?insertAllowed[c.name]||[]:c.name==='actor_links'&&enrollment?actorInserts:[];
+      const inserts=c.schema==='scope_app'?insertAllowed[c.name]||[]:c.name==='actor_links'&&enrollment?actorInserts:c.name==='paypal_payer_links'&&paypalIdentity?paypalIdentityInserts:[];
       const updates=write&&c.schema==='scope_app'&&c.name==='workspaces'?workspaceUpdates:[];
       if(c.admin||c.refs||c.del&&!auth||c.ins&&!auth&&!inserts.includes(c.column_name)||c.upd&&!auth&&!updates.includes(c.column_name))throw Error('runtime_database_role_too_broad');
       if(role.active&&(!c.sel||auth&&(!c.ins||!c.upd||!c.del)))throw Error('runtime_database_role_incomplete');
@@ -58,4 +59,5 @@ export async function verifyRuntimeRole(pool,{write=false,ai=false,enrollment=fa
   for(const [name,columns] of Object.entries(insertAllowed))for(const column of columns)if(actual.get('scope_app.'+name+'.'+column)?.ins!==true)throw Error('runtime_database_role_incomplete');
   if(write)for(const column of workspaceUpdates)if(actual.get('scope_app.workspaces.'+column)?.upd!==true)throw Error('runtime_database_role_incomplete');
   if(enrollment)for(const column of actorInserts)if(actual.get('scope_identity.actor_links.'+column)?.ins!==true)throw Error('runtime_database_role_incomplete');
+  if(paypalIdentity)for(const column of paypalIdentityInserts)if(actual.get('scope_identity.paypal_payer_links.'+column)?.ins!==true)throw Error('runtime_database_role_incomplete');
 }

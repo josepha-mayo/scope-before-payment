@@ -14,6 +14,15 @@ test('a restore epoch and canonical 32-byte signing secret are required',()=>{
   }
   for(const epoch of [undefined,'latest','0000'])assert.throws(()=>authConfiguration({...environment(),SCOPE_AUTH_SESSION_EPOCH:epoch}));
 });
+
+test('PayPal identity is explicit, sandbox-only and uses the installed provider without a UserInfo override',()=>{
+  const base=environment();assert.equal(authConfiguration(base).paypal,undefined);
+  for(const value of ['yes','live','TRUE'])assert.throws(()=>authConfiguration({...base,SCOPE_PAYPAL_SIGNIN_ENABLED:value}));
+  assert.throws(()=>authConfiguration({...base,SCOPE_PAYPAL_SIGNIN_ENABLED:'true'}));
+  const configuration=authConfiguration({...base,SCOPE_PAYPAL_SIGNIN_ENABLED:'true',PAYPAL_SANDBOX_CLIENT_ID:randomBytes(24).toString('hex'),PAYPAL_SANDBOX_CLIENT_SECRET:randomBytes(24).toString('hex')});
+  const options=authOptions({pool:{query(){}},configuration});assert.equal(options.socialProviders.paypal.environment,'sandbox');assert.equal(options.socialProviders.paypal.requestShippingAddress,false);
+  assert.equal(options.socialProviders.paypal.getUserInfo,undefined);assert.equal(options.socialProviders.paypal.validateAuthorizationCode,undefined);assert.equal(options.account.accountLinking.enabled,false);
+});
 test('production factory has no privileged test helper and never trusts a forwarded origin',async()=>{
   const configuration=authConfiguration(environment());
   const pool={query(){throw Error('unexpected_database_call');},connect(){throw Error('unexpected_database_call');}};

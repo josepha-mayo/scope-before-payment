@@ -23,6 +23,7 @@ export function runtimeConfiguration(env){
   const mode=env.SCOPE_PORTABLE_MODE??'read-only',ai=env.SCOPE_PORTABLE_AI_PROVIDER??'off',enrollment=env.SCOPE_PORTABLE_ENROLLMENT??'existing-only';
   if(!['read-only','write'].includes(mode)||!['off','nvidia'].includes(ai)||!['existing-only','enabled'].includes(enrollment))throw Error('runtime_activation_invalid');
   if(mode!=='write'&&(ai!=='off'||enrollment!=='existing-only'))throw Error('runtime_activation_invalid');
+  if(auth.paypal&&mode!=='write')throw Error('runtime_activation_invalid');
   if(mode==='write'&&!/^[a-f0-9]{64}$/.test(env.SCOPE_PORTABLE_CUTOVER_RECEIPT??''))throw Error('runtime_cutover_receipt_required');
   if(ai==='nvidia'&&!/^nvapi-[A-Za-z0-9_-]{20,256}$/.test(env.SCOPE_NVIDIA_API_KEY??''))throw Error('runtime_ai_configuration_required');
   return Object.freeze({auth,port:Number(port),legacyActor,legacySubject,mode,ai,enrollment:enrollment==='enabled',
