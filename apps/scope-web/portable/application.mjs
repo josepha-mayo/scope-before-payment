@@ -6,10 +6,10 @@ import {createRequestPrincipal} from './principal.mjs';
 // Authentication can be qualified independently of provider dispatch. The
 // migration starts read-only; activating writes/providers needs separate gates.
 // No secret, SDK response, provider account or auth-user ID reaches the app UI.
-export function createPortableApplication({pool,configuration,canWrite=()=>false,canEnroll=canWrite,report=()=>{},draftProvider,checkoutProvider}){
-  const auth=createPortableAuth({pool,configuration,canEnroll});
+export function createPortableApplication({pool,configuration,canWrite=()=>false,canEnroll=canWrite,report=()=>{},draftProvider,checkoutProvider,authSignal=()=>{}}){
+  const auth=createPortableAuth({pool,configuration,canEnroll,authSignal});
   const paypalEnabled=configuration.paypal!==undefined;
-  const authentication=createAuthBoundary({auth,origin:configuration.origin,canEnroll,canWrite,paypalEnabled});
+  const authentication=createAuthBoundary({auth,origin:configuration.origin,canEnroll,canWrite,paypalEnabled,authSignal});
   return async(request,transport)=>{
     const url=new URL(request.url);
     if(url.origin!==configuration.origin)return new Response(null,{status:421,headers:{'Cache-Control':'private, no-store'}});

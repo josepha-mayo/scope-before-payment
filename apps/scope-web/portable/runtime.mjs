@@ -11,6 +11,7 @@ import {verifyRuntimeRole} from './permissions.mjs';
 import {createRecoveryPolicy,guardDraftProvider} from '../server/recovery.mjs';
 import {createNvidiaDraftProvider} from '../server/nvidia-provider.mjs';
 import {createPortablePayments} from './payments.mjs';
+import {createAuthSignalWriter} from './auth-signals.mjs';
 
 // Read-only remains the default. Writes require explicit operator configuration,
 // a cutover receipt and verified narrow SQL grants. Payment/ingress stay off
@@ -53,7 +54,7 @@ export async function startPortableRuntime({env=process.env,listenHost='0.0.0.0'
     phase='payments';
     const payments=await createPortablePayments({pool,origin:configuration.auth.origin,checkout:configuration.checkout,webhook:configuration.webhook,read:key=>env[key],canWrite:writable,recovery,report});
     const capabilities=()=>({mode:writable()?'write':'read-only',aiEnabled:draftProvider?.available()===true,paypalEnabled:payments.checkoutProvider?.available()===true,paypalSignInEnabled:configuration.auth.paypal!==undefined,webhookEnabled:configuration.webhook&&writable(),registrationEnabled:canEnroll()});
-    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider,checkoutProvider:payments.checkoutProvider});
+    const api=createPortableApplication({pool,configuration:configuration.auth,canWrite:writable,canEnroll,report,draftProvider,checkoutProvider:payments.checkoutProvider,authSignal:createAuthSignalWriter()});
     phase='listen';server=createNodeHttpServer({getOrigin:()=>configuration.auth.origin,staticDirectory,indexFile:'portable/index.html',api,webhook:payments.webhook,
       async staticResponse(request){
         const url=new URL(request.url);if(url.pathname!=='/healthz')return null;
