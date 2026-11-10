@@ -1,10 +1,31 @@
 # Record an owned review cut
 
-## Revised published demo — November 9
+## Current published demo — November 10
+
+[Watch the 2:39 real PayPal Sandbox demo](https://www.youtube.com/watch?v=iMB-rgryzy4).
+The 1920×1080 H.264/AAC edit is 159.033 seconds and has 45 non-overlapping,
+timed English captions. [Download the caption file](demo/scope-paypal-sandbox-20261110.en.srt).
+SHA256 `879b09062202fcc625ffe6f97e22e058e91a5f6eab4294d26472e2b8a979112a`.
+
+The first half shows real hosted NVIDIA review and exact USD48 publication.
+The change-request scene is a labeled local rehearsal. The second half uses
+actual hosted screenshots and the [verified USD5 sandbox journal](REAL_PAYPAL_SANDBOX_20261110.md)
+for buyer acceptance, one create/check/capture, registered signed notifications,
+and the saved result after reload. These are separate invented commissions.
+
+Joseph's consented own-voice clone was generated locally with Chatterbox Nano;
+original recordings were not uploaded. YouTube's AI disclosure is enabled.
+No music or real-money payment is included. The prototype's live onboarding,
+independent usability and production recovery limits are disclosed.
+
+The videos below are historical edits. Their deployment and payment status
+statements describe the corresponding recording date.
+
+## Revised published demo — November 9 archive
 
 [Watch the revised 2:32 prototype](https://www.youtube.com/watch?v=89WKFiUpklM).
-The [existing Devpost entry](https://devpost.com/software/scope-before-payment)
-uses this replacement video. The original November 8 video remains an archive.
+The existing Devpost entry used this replacement at the time. The original
+November 8 video remains an archive.
 
 The revised cut uses Joseph's own voice, cloned locally with his explicit consent
 from his recording using Chatterbox Nano. The model's built-in watermark remains;

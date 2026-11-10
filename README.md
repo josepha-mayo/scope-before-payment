@@ -17,24 +17,32 @@ Joining, copying suggestions, publishing and accepting never request payment.
 
 ## Try it
 
-[Watch the revised 1:57 prototype demo](https://www.youtube.com/watch?v=IP6C7GZOy94)
+[Watch the 2:39 demo: real PayPal Sandbox and cited AI](https://www.youtube.com/watch?v=iMB-rgryzy4)
 with Joseph's own consented, locally cloned voice, readable close-ups and timed
 English captions. [View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
 The opening shows the actual hosted conversation, saved NVIDIA review and exact
-USD48 offer. Buyer changes and payment recovery are separately labeled local
-rehearsals with authored accounts and PayPal replies. Dated screenshots retain
-the earlier live Claude and historical sandbox order evidence. Real capture and registered signed
-delivery remain unverified. See the [recording and edit notes](docs/REVIEW_CUT.md).
+USD48 offer. A separately labeled local rehearsal shows buyer changes. The last
+scenes show the real USD5 sandbox buyer acceptance, capture, signed notification
+and saved result after reload. See the [recording and edit notes](docs/REVIEW_CUT.md).
+
+**Real PayPal Sandbox flow verified November 10:** a distinct sandbox buyer
+signed in, joined and accepted an exact USD5 revision, approved its order,
+and explicitly captured payment. PayPal returned HTTP201 with a completed
+capture; registered, signature-verified approval and capture notifications were
+saved. Exactly one create, one approval check and one capture were sent.
+[Read the source-linked evidence and limits](docs/REAL_PAYPAL_SANDBOX_20261110.md).
 
 [Hosted workspace](https://scope-before-payment.onrender.com) — sign in with
 GitHub and use invented conversations. The portable Node.js release runs on
 free Render with PostgreSQL on Neon. New commissions, reviewed publication and
 NVIDIA review are active; retained Claude reviews remain readable. A free-host
-cold start can take 50 seconds or more. Hosted PayPal checkout is inactive; a real hosted sandbox
-capture and registered webhook delivery have not been demonstrated.
-See the [dated native release evidence and limitations](docs/NATIVE_RELEASE_20261109.md).
-Optional [PayPal Sandbox buyer sign-in](docs/PAYPAL_SIGNIN_QUALIFICATION.md) is
-being qualified separately from checkout. Read the [sandbox data-use notice](docs/SANDBOX_DATA_USE.md)
+cold start can take 50 seconds or more. PayPal Sandbox buyer sign-in and signed
+webhook reception are active. Checkout is deliberately limited to the qualified
+exact USD5 offer; new commissions do not inherit payment authority. There is no
+live-money checkout. The [November 9 release record](docs/NATIVE_RELEASE_20261109.md)
+is historical; the [November 10 qualification](docs/REAL_PAYPAL_SANDBOX_20261110.md)
+records the current provider evidence.
+Read the [buyer sign-in notes](docs/PAYPAL_SIGNIN_QUALIFICATION.md), [sandbox data-use notice](docs/SANDBOX_DATA_USE.md)
 and [testing notice](docs/SANDBOX_TESTING_NOTICE.md) before trying the host.
 
 The source also includes a private [account data copy](docs/ACCOUNT_DATA_COPY.md)
@@ -101,9 +109,9 @@ See [rehearsal details](docs/LOCAL_REHEARSAL.md).
 - A buyer change request blocks acceptance until an explicitly linked response
   is published. Any new revision needs fresh acceptance.
 - PayPal Orders/OAuth adapters retain dispatch claims and sanitized observations.
-  Signed webhook verification is implemented, but the portable payment provider
-  and receiver remain inactive pending actual buyer/capture/delivery qualification.
-  Notifications cannot themselves grant capture authority.
+  Real sandbox buyer login, exact-offer capture and registered signed delivery
+  are verified for one controlled USD5 qualification. Notifications cannot
+  themselves grant capture authority; broader checkout needs explicit setup.
 - Unknown actions recover through saved-status reads rather than automatic POST
   retries. Recovery mode blocks writes independently of restored database state.
 - Members can download private JSON or readable, printable HTML records. These
@@ -119,9 +127,10 @@ npm run build
 npm run preview -- --port 4181 --strictPort
 ```
 
-The localhost frontend deliberately has no test sign-in. Hosted sign-in needs
-the configured Netlify services. The authored identity adapter is a separate
-test build and is never part of published `dist`.
+The localhost frontend deliberately has no test sign-in. The portable host uses
+Better Auth, GitHub/optional PayPal Sandbox identity and configured PostgreSQL;
+the original Netlify adapter remains in the source. The authored identity adapter
+is a separate test build and is never part of the deployed production bundle.
 
 See [setup and verification](docs/SETUP.md) for the actual PostgreSQL/Chromium
 checks, hosted service configuration and adapter boundaries. CI exercises the
@@ -140,12 +149,14 @@ Use invented data. Automatic deletion, account erasure, a complete account
 export and production recovery/monitoring qualification remain unfinished.
 Three retained real Claude reviews establish functioning inference, including
 [one live instruction-conflict case](docs/LIVE_AI_QUALIFICATION.md), not measured
-time savings or reduced disputes. Real buyer/provider qualification, actual
-sandbox capture and registered delivery remain open.
+time savings or reduced disputes. One real hosted PayPal Sandbox capture and
+registered signed capture notification are verified. This does not qualify live
+merchant onboarding, independent human usability or general production recovery.
 
 `apps/scope-web` is the hosted product. The two `experiments` directories retain
 the portable rehearsal and alternative transport contracts used by its tests.
-Optional NVIDIA/Nebius adapters are source experiments, not the hosted AI path.
+Historical experimental NVIDIA/Nebius adapters remain separate from the current
+hosted NVIDIA commission-review implementation.
 No credentials, runtime databases or private provider evidence are bundled.
 
 MIT licensed. `SOURCE_PROVENANCE.json` records this initial clean import and its
