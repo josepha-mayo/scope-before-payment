@@ -82,7 +82,7 @@ test('restricted financial roles run one authored native checkout and signed del
   const event=signed.event({type:'PAYMENT.CAPTURE.COMPLETED',orderId:'INVENTEDORDER87',captureId:'INVENTEDCAPTURE87'});
   const delivered=await handler(signed.request(event,{origin}));assert.equal(delivered.status,200);assert.equal((await delivered.json()).received,true);
   assert.equal((await c.query('SELECT count(*)::int AS n FROM scope_app.paypal_webhook_deliveries WHERE event_id=$1',[event.id])).rows[0].n,1);
-  for(const sql of ['INSERT INTO scope_app.checkout_attempts(created_at) VALUES(now())','INSERT INTO scope_app.paypal_oauth_claims(sequence) VALUES(99)','UPDATE scope_app.checkout_receipts SET reason=reason','DELETE FROM scope_app.paypal_webhook_events','TRUNCATE scope_app.paypal_oauth_receipts',"SELECT nextval('scope_app.paypal_oauth_claims_sequence_seq')"])await rejects(c,sql);
+  for(const sql of ['INSERT INTO scope_app.checkout_attempts(created_at) VALUES(now())','INSERT INTO scope_app.paypal_oauth_claims(sequence) OVERRIDING SYSTEM VALUE VALUES(99)','UPDATE scope_app.checkout_receipts SET reason=reason','DELETE FROM scope_app.paypal_webhook_events','TRUNCATE scope_app.paypal_oauth_receipts',"SELECT nextval('scope_app.paypal_oauth_claims_sequence_seq')"])await rejects(c,sql);
  },owned.pool);
  }finally{await owned.close();}
 });
