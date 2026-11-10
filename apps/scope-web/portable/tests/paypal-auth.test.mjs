@@ -15,13 +15,14 @@ assert.ok(['postgres:','postgresql:'].includes(url.protocol)&&['127.0.0.1','loca
 const pool=new pg.Pool({connectionString:url.href,max:4,connectionTimeoutMillis:3000});
 const configuration={origin:'https://scope-owned.example',secret:randomBytes(32).toString('base64'),epoch:randomUUID(),clientId:'owned-client',clientSecret:'owned-secret',paypal:{clientId:randomBytes(24).toString('hex'),clientSecret:randomBytes(24).toString('hex')}};
 const auth=createPortableAuth({pool,configuration,canEnroll:()=>true}),boundary=createAuthBoundary({auth,origin:configuration.origin,paypalEnabled:true,canEnroll:()=>true,canWrite:()=>true});
-const originalFetch=globalThis.fetch;let helpers,unexpectedRequests=0,peerCounter=130;
+const originalFetch=globalThis.fetch;let helpers,peerCounter=130;const unexpectedRequests=[];
+const deniedRequest=input=>{let path='invalid-url';try{const u=new URL(String(input instanceof Request?input.url:input));path=u.origin+u.pathname;}catch{}unexpectedRequests.push(path);throw Error('external_network_forbidden');};
 test.before(async()=>{
   assert.ok((await pool.query("SELECT to_regclass('scope_identity.paypal_payer_links')::text AS name")).rows[0].name,'Run the complete portable suite to apply owned migrations');
   const fixtureAuth=betterAuth({...authOptions({pool,configuration,canEnroll:()=>true}),plugins:[testUtils()]});helpers=(await fixtureAuth.$context).test;
-  globalThis.fetch=async()=>{unexpectedRequests++;throw Error('external_network_forbidden');};
+  globalThis.fetch=async input=>deniedRequest(input);
 });
-test.after(async()=>{globalThis.fetch=originalFetch;await pool.end();assert.equal(unexpectedRequests,0);});
+test.after(async()=>{globalThis.fetch=originalFetch;await pool.end();assert.deepEqual(unexpectedRequests,[],'Unexpected destination paths only; codes/tokens/query strings are excluded');});
 const subject=()=> 'https://www.paypal.com/webapps/auth/identity/user/owned-'+randomUUID();
 const payer=()=>randomBytes(7).toString('hex').slice(0,13).toUpperCase();
 const profile=()=>({user_id:subject(),name:'Owned sandbox buyer',email:randomUUID()+'@invented.example',email_verified:true,payer_id:payer()});
@@ -50,7 +51,7 @@ async function callback(f,info,{idToken,tokenFailure=false}={}){
    if(target==='https://api-m.sandbox.paypal.com/v1/identity/oauth2/userinfo?schema=paypalv1.1'){
      assert.equal(new Headers(options.headers).get('authorization'),'Bearer '+token);return Response.json(info);
    }
-   unexpectedRequests++;throw Error('unexpected_provider_request');
+   return deniedRequest(input);
  };
  try{return {response:await boundary(new Request(f.callbackUrl,{headers:{cookie:f.cookie}}),f.peer),calls,token,logs};}
  finally{globalThis.fetch=denied;console.error=originalError;}
