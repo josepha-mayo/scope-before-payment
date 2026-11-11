@@ -1,0 +1,151 @@
+1
+00:00:00,332 --> 00:00:04,491
+A client asks for subtitles. The conversation changes
+
+2
+00:00:04,511 --> 00:00:07,564
+the job. Scope turns those messages into an
+
+3
+00:00:07,584 --> 00:00:10,827
+exact offer, before anyone pays. This is the
+
+4
+00:00:10,847 --> 00:00:12,742
+hosted app, running in my browser.
+
+5
+00:00:14,638 --> 00:00:18,405
+Here is a saved, real NVIDIA review. Each
+
+6
+00:00:18,425 --> 00:00:21,730
+suggestion stays separate from the offer, with excerpts
+
+7
+00:00:21,750 --> 00:00:25,005
+linked to its source messages. I open the
+
+8
+00:00:25,025 --> 00:00:28,150
+citation and check what the creator actually promised.
+
+9
+00:00:28,700 --> 00:00:30,700
+The model never sets the price.
+
+10
+00:00:32,182 --> 00:00:35,056
+Important exclusions are missing. I add the limits
+
+11
+00:00:35,076 --> 00:00:38,318
+myself before copying the suggestion into the offer.
+
+12
+00:00:41,243 --> 00:00:44,351
+I empty the field first. Then I confirm
+
+13
+00:00:44,371 --> 00:00:48,237
+my review and copy the corrected text. Pricing
+
+14
+00:00:48,257 --> 00:00:51,923
+is still my decision. I review every term
+
+15
+00:00:51,943 --> 00:00:55,294
+and publish the exact offer. The new version
+
+16
+00:00:55,314 --> 00:00:58,580
+is saved. It still needs the buyer to
+
+17
+00:00:58,600 --> 00:01:02,029
+accept. Publishing never requests payment.
+
+18
+00:01:10,042 --> 00:01:13,619
+Here the browser runs a local rehearsal. The
+
+19
+00:01:13,639 --> 00:01:17,258
+accounts are invented. The buyer requests three hundred
+
+20
+00:01:17,278 --> 00:01:21,341
+postcards. The creator responds with a new scope
+
+21
+00:01:21,361 --> 00:01:24,536
+and a two hundred ten dollar total. The
+
+22
+00:01:24,556 --> 00:01:28,375
+buyer compares the changes and accepts revision two.
+
+23
+00:01:29,083 --> 00:01:31,778
+The old acceptance cannot approve a new price.
+
+24
+00:01:32,806 --> 00:01:35,369
+These are real app interactions with the API
+
+25
+00:01:35,389 --> 00:01:40,758
+and database, using authored provider replies. No external
+
+26
+00:01:40,778 --> 00:01:43,111
+payment happens in this rehearsal.
+
+27
+00:01:48,633 --> 00:01:51,202
+Back on the hosted app, this five-dollar commission
+
+28
+00:01:51,222 --> 00:01:54,869
+completed PayPal sandbox checkout with test funds on
+
+29
+00:01:54,889 --> 00:01:58,002
+November tenth. I am viewing the saved result
+
+30
+00:01:58,022 --> 00:02:01,091
+from that successful test. There is no new
+
+31
+00:02:01,111 --> 00:02:04,158
+charge in this recording. The order was approved,
+
+32
+00:02:04,178 --> 00:02:08,624
+and one capture completed. Matching, signed approval and
+
+33
+00:02:08,644 --> 00:02:12,736
+capture notifications arrived. The saved history shows one
+
+34
+00:02:12,756 --> 00:02:16,713
+create, one approval check, and one capture. That
+
+35
+00:02:16,733 --> 00:02:19,333
+payment belongs to the exact buyer and revision.
+
+36
+00:02:22,635 --> 00:02:25,286
+Keep a copy of the agreement. Inspect the
+
+37
+00:02:25,306 --> 00:02:28,388
+evidence. Scope makes the work clear before payment.
+
+38
+00:02:29,165 --> 00:02:31,094
+This is a working sandbox prototype.

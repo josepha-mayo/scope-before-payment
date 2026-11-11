@@ -17,13 +17,15 @@ Joining, copying suggestions, publishing and accepting never request payment.
 
 ## Try it
 
-[Watch the 2:39 demo: real PayPal Sandbox and cited AI](https://www.youtube.com/watch?v=iMB-rgryzy4)
-with Joseph's own consented, locally cloned voice, readable close-ups and timed
-English captions. [View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
-The opening shows the actual hosted conversation, saved NVIDIA review and exact
-USD48 offer. A separately labeled local rehearsal shows buyer changes. The last
-scenes show the real USD5 sandbox buyer acceptance, capture, signed notification
-and saved result after reload. See the [recording and edit notes](docs/REVIEW_CUT.md).
+[Watch the 2:32 continuous browser demo](https://www.youtube.com/watch?v=VlsOWv2Rct0)
+with Joseph's own consented, locally cloned voice and timed English captions.
+[View the submitted Devpost project](https://devpost.com/software/scope-before-payment).
+Actual browser operation shows the hosted conversation, saved real NVIDIA
+citations, correction of a missed exclusion and publication of USD48 revision 2.
+A separately labeled local rehearsal demonstrates buyer changes, comparison and
+exact acceptance. The PayPal chapter reads the saved successful November 10 USD5
+sandbox capture, signed notifications and original action history; no new payment
+is requested while recording. See the [footage and verification notes](docs/CONTINUOUS_DEMO_20261111.md).
 
 **Real PayPal Sandbox flow verified November 10:** a distinct sandbox buyer
 signed in, joined and accepted an exact USD5 revision, approved its order,
