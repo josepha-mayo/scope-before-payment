@@ -1,6 +1,14 @@
 # Record an owned review cut
 
-## Current published demo — November 10
+## Current published demo — November 11
+
+[Watch the corrected 2:32 continuous browser demo](https://www.youtube.com/watch?v=VlsOWv2Rct0).
+This edit records actual browser operation rather than the earlier still-image
+layouts. Both the public project and the existing hackathon entry were updated.
+Read the [chapter boundaries, capture method and verification](CONTINUOUS_DEMO_20261111.md)
+and [download the reviewed English captions](demo/scope-continuous-demo-20261111.en.srt).
+
+## Historical published demo — November 10
 
 [Watch the 2:39 real PayPal Sandbox demo](https://www.youtube.com/watch?v=iMB-rgryzy4).
 The 1920×1080 H.264/AAC edit is 159.033 seconds and has 45 non-overlapping,
